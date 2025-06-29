@@ -19,7 +19,7 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
     {
       id: '1',
       type: 'assistant',
-      content: 'Hello! I\'m your Legal Assistant AI v2.0 🤖. I can help you generate professional legal documents including GDPR-compliant privacy policies, NDAs, contracts, and agreements. What would you like to create today?',
+      content: 'Hello! I\'m your Universal Legal Assistant AI v1.0 🤖. I can help you generate professional legal documents including GDPR-compliant privacy policies, NDAs, contracts, terms of service, and partnership agreements. I\'m trained on international law and can adapt to different jurisdictions. What would you like to create today?',
       timestamp: new Date(),
     }
   ]);
@@ -61,21 +61,24 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
       // Determine country/jurisdiction from message
       const country = detectCountry(userMessage);
       
+      // Determine business type from message
+      const businessType = detectBusinessType(userMessage);
+      
       const result = await generateDocument(
         userMessage,
         documentType,
         country,
-        'startup' // Default to startup, could be made configurable
+        businessType
       );
 
       if (result.success && result.content) {
         setLastGeneratedContent(result.content);
         const documentTypeLabel = getDocumentTypeLabel(documentType);
-        addMessage('assistant', `I've generated a ${documentTypeLabel} document based on your requirements. Here's what I created:\n\n${result.content}`);
+        addMessage('assistant', `I've generated a ${documentTypeLabel} document for ${country} jurisdiction based on your requirements. Here's what I created:\n\n${result.content}`);
       } else if (result.limit_reached) {
         addMessage('assistant', result.error || 'AI generation limit reached. Please upgrade your plan to continue generating documents.');
       } else {
-        addMessage('assistant', 'I apologize, but I encountered an issue generating your document. Could you please try rephrasing your request or provide more specific details?');
+        addMessage('assistant', 'I apologize, but I encountered an issue generating your document. Could you please try rephrasing your request or provide more specific details about the jurisdiction and document requirements?');
       }
     } catch (error) {
       addMessage('assistant', 'I\'m sorry, but I\'m having trouble processing your request right now. Please try again in a moment.');
@@ -101,12 +104,14 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
       return 'freelance';
     } else if (lowerMessage.includes('consulting') || lowerMessage.includes('consultant')) {
       return 'consulting';
-    } else if (lowerMessage.includes('terms of service') || lowerMessage.includes('tos')) {
+    } else if (lowerMessage.includes('terms of service') || lowerMessage.includes('tos') || lowerMessage.includes('terms of use')) {
       return 'terms';
     } else if (lowerMessage.includes('license') || lowerMessage.includes('licensing')) {
       return 'licensing';
     } else if (lowerMessage.includes('vendor') || lowerMessage.includes('supplier')) {
       return 'vendor';
+    } else if (lowerMessage.includes('saas') || lowerMessage.includes('software as a service')) {
+      return 'terms';
     }
     
     return 'nda'; // Default fallback
@@ -115,19 +120,19 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
   const detectCountry = (message: string): string => {
     const lowerMessage = message.toLowerCase();
     
-    if (lowerMessage.includes('netherlands') || lowerMessage.includes('dutch') || lowerMessage.includes('nl')) {
+    if (lowerMessage.includes('netherlands') || lowerMessage.includes('dutch') || lowerMessage.includes('nl') || lowerMessage.includes('amsterdam')) {
       return 'Netherlands';
-    } else if (lowerMessage.includes('united states') || lowerMessage.includes('usa') || lowerMessage.includes('us')) {
+    } else if (lowerMessage.includes('united states') || lowerMessage.includes('usa') || lowerMessage.includes('us') || lowerMessage.includes('america') || lowerMessage.includes('california') || lowerMessage.includes('new york')) {
       return 'US';
-    } else if (lowerMessage.includes('united kingdom') || lowerMessage.includes('uk') || lowerMessage.includes('britain')) {
+    } else if (lowerMessage.includes('united kingdom') || lowerMessage.includes('uk') || lowerMessage.includes('britain') || lowerMessage.includes('england') || lowerMessage.includes('london')) {
       return 'UK';
-    } else if (lowerMessage.includes('germany') || lowerMessage.includes('german') || lowerMessage.includes('de')) {
+    } else if (lowerMessage.includes('germany') || lowerMessage.includes('german') || lowerMessage.includes('de') || lowerMessage.includes('berlin')) {
       return 'DE';
-    } else if (lowerMessage.includes('france') || lowerMessage.includes('french') || lowerMessage.includes('fr')) {
+    } else if (lowerMessage.includes('france') || lowerMessage.includes('french') || lowerMessage.includes('fr') || lowerMessage.includes('paris')) {
       return 'FR';
-    } else if (lowerMessage.includes('canada') || lowerMessage.includes('canadian') || lowerMessage.includes('ca')) {
+    } else if (lowerMessage.includes('canada') || lowerMessage.includes('canadian') || lowerMessage.includes('ca') || lowerMessage.includes('toronto')) {
       return 'CA';
-    } else if (lowerMessage.includes('australia') || lowerMessage.includes('australian') || lowerMessage.includes('au')) {
+    } else if (lowerMessage.includes('australia') || lowerMessage.includes('australian') || lowerMessage.includes('au') || lowerMessage.includes('sydney')) {
       return 'AU';
     } else if (lowerMessage.includes('singapore') || lowerMessage.includes('sg')) {
       return 'SG';
@@ -136,6 +141,28 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
     }
     
     return 'Netherlands'; // Default to Netherlands (GDPR compliant)
+  };
+
+  const detectBusinessType = (message: string): string => {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('startup') || lowerMessage.includes('start-up')) {
+      return 'startup';
+    } else if (lowerMessage.includes('corporation') || lowerMessage.includes('corp')) {
+      return 'corporation';
+    } else if (lowerMessage.includes('llc')) {
+      return 'llc';
+    } else if (lowerMessage.includes('freelance') || lowerMessage.includes('freelancer') || lowerMessage.includes('individual')) {
+      return 'freelancer';
+    } else if (lowerMessage.includes('nonprofit') || lowerMessage.includes('non-profit')) {
+      return 'nonprofit';
+    } else if (lowerMessage.includes('saas') || lowerMessage.includes('software')) {
+      return 'saas';
+    } else if (lowerMessage.includes('ecommerce') || lowerMessage.includes('e-commerce') || lowerMessage.includes('online store')) {
+      return 'ecommerce';
+    }
+    
+    return 'startup'; // Default fallback
   };
 
   const getDocumentTypeLabel = (type: string): string => {
@@ -202,8 +229,8 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
                   <Bot className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Legal Assistant AI v2.0</h3>
-                  <p className="text-xs opacity-90">Enhanced GDPR Compliance • Ready to help</p>
+                  <h3 className="font-semibold">Universal Legal AI v1.0</h3>
+                  <p className="text-xs opacity-90">Multi-Jurisdictional • GDPR Compliant</p>
                 </div>
               </div>
               <button
@@ -252,7 +279,7 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
                 <div className="bg-gray-100 p-3 rounded-2xl">
                   <div className="flex items-center space-x-2">
                     <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
-                    <span className="text-sm text-gray-600">Generating document...</span>
+                    <span className="text-sm text-gray-600">Generating legal document...</span>
                   </div>
                 </div>
               </div>
@@ -298,7 +325,7 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ask me to generate any legal document or privacy policy..."
+                placeholder="Ask me to generate any legal document for any jurisdiction..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
                 disabled={isLoading}
               />
