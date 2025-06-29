@@ -12,9 +12,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Gemini API configuration
+// Gemini API configuration - Updated to use Gemini 1.5 Flash
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 interface GenerateRequest {
   prompt: string;
@@ -172,13 +172,12 @@ ${prompt}
 
 Please generate a complete, professional legal document that addresses all the requirements mentioned above. Include proper legal language, structure, and all necessary clauses for this type of agreement.`;
 
-    console.log('Full prompt being sent to Gemini:', fullPrompt);
+    console.log('Full prompt being sent to Gemini 1.5 Flash:', fullPrompt);
 
-    // Call Gemini API with proper request structure
+    // Call Gemini 1.5 Flash API with proper request structure
     const geminiRequestBody = {
       contents: [
         {
-          role: "user",
           parts: [
             {
               text: fullPrompt
@@ -212,7 +211,7 @@ Please generate a complete, professional legal document that addresses all the r
       ]
     };
 
-    console.log('Gemini request body:', JSON.stringify(geminiRequestBody, null, 2));
+    console.log('Gemini 1.5 Flash request body:', JSON.stringify(geminiRequestBody, null, 2));
 
     const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -222,12 +221,12 @@ Please generate a complete, professional legal document that addresses all the r
       body: JSON.stringify(geminiRequestBody),
     });
 
-    console.log('Gemini response status:', geminiResponse.status);
-    console.log('Gemini response headers:', Object.fromEntries(geminiResponse.headers.entries()));
+    console.log('Gemini 1.5 Flash response status:', geminiResponse.status);
+    console.log('Gemini 1.5 Flash response headers:', Object.fromEntries(geminiResponse.headers.entries()));
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      console.error('Gemini API error response:', errorText);
+      console.error('Gemini 1.5 Flash API error response:', errorText);
       return new Response(
         JSON.stringify({ 
           error: `Gemini API error (${geminiResponse.status}): ${errorText}` 
@@ -240,7 +239,7 @@ Please generate a complete, professional legal document that addresses all the r
     }
 
     const geminiData = await geminiResponse.json();
-    console.log('Gemini response data:', JSON.stringify(geminiData, null, 2));
+    console.log('Gemini 1.5 Flash response data:', JSON.stringify(geminiData, null, 2));
     
     // Extract the generated text with detailed error checking
     const candidates = geminiData.candidates;
@@ -291,7 +290,7 @@ Please generate a complete, professional legal document that addresses all the r
       );
     }
 
-    console.log('Successfully generated content, length:', generatedContent.length);
+    console.log('Successfully generated content with Gemini 1.5 Flash, length:', generatedContent.length);
 
     // Update user's AI generation usage
     const { error: updateError } = await supabase

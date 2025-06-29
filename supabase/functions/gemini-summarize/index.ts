@@ -12,9 +12,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Gemini API configuration
+// Gemini API configuration - Updated to use Gemini 1.5 Flash
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 interface SummarizeRequest {
   document_id: string;
@@ -146,7 +146,9 @@ Deno.serve(async (req) => {
         break;
     }
 
-    // Call Gemini API
+    console.log('Sending summarization request to Gemini 1.5 Flash');
+
+    // Call Gemini 1.5 Flash API
     const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
@@ -191,7 +193,7 @@ Deno.serve(async (req) => {
 
     if (!geminiResponse.ok) {
       const errorData = await geminiResponse.json();
-      console.error('Gemini API error:', errorData);
+      console.error('Gemini 1.5 Flash API error:', errorData);
       return new Response(
         JSON.stringify({ error: 'Failed to generate summary. Please try again.' }), 
         { 
@@ -205,6 +207,8 @@ Deno.serve(async (req) => {
     
     // Extract the generated text
     const summary = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'Unable to generate summary';
+
+    console.log('Successfully generated summary with Gemini 1.5 Flash');
 
     // Update user's AI generation usage
     const { error: updateError } = await supabase
