@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Wand2, Loader2 } from 'lucide-react';
+import { X, Wand2, Loader2, Globe, Building } from 'lucide-react';
+import { generateDocument } from '../lib/gemini';
 
 interface AIModalProps {
   isOpen: boolean;
@@ -10,61 +11,86 @@ interface AIModalProps {
 const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
   const [prompt, setPrompt] = useState('');
   const [templateType, setTemplateType] = useState('nda');
+  const [country, setCountry] = useState('US');
+  const [businessType, setBusinessType] = useState('startup');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
+    setError(null);
+    
     try {
-      // Simulate AI generation - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const result = await generateDocument(prompt, templateType, country, businessType);
       
-      const mockContent = `# ${templateType.toUpperCase()} Agreement
-
-## Parties
-This agreement is entered into between the parties as specified below.
-
-## Purpose
-${prompt}
-
-## Terms and Conditions
-1. **Confidentiality**: All information shared between parties shall remain confidential.
-2. **Duration**: This agreement shall remain in effect for a period of [DURATION].
-3. **Obligations**: Each party agrees to fulfill their respective obligations as outlined.
-
-## Signatures
-By signing below, both parties agree to the terms and conditions set forth in this agreement.
-
-_Party 1 Signature: _________________ Date: _________
-
-_Party 2 Signature: _________________ Date: _________
-
----
-*This document was generated using AI assistance and should be reviewed by legal counsel before use.*`;
-
-      onGenerate(mockContent);
-      setPrompt('');
-      onClose();
+      if (result.success && result.content) {
+        onGenerate(result.content);
+        setPrompt('');
+        onClose();
+      } else if (result.limit_reached) {
+        setError(result.error || 'AI generation limit reached. Please upgrade your plan.');
+      } else {
+        setError(result.error || 'Failed to generate document. Please try again.');
+      }
     } catch (error) {
       console.error('Error generating document:', error);
+      setError('Failed to generate document. Please try again.');
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const documentTypes = [
+    { value: 'nda', label: 'Non-Disclosure Agreement (NDA)' },
+    { value: 'partnership', label: 'Partnership Agreement' },
+    { value: 'employment', label: 'Employment Agreement' },
+    { value: 'service', label: 'Service Contract' },
+    { value: 'terms', label: 'Terms of Service' },
+    { value: 'privacy', label: 'Privacy Policy' },
+    { value: 'freelance', label: 'Freelance Contract' },
+    { value: 'consulting', label: 'Consulting Agreement' },
+    { value: 'licensing', label: 'Licensing Agreement' },
+    { value: 'vendor', label: 'Vendor Agreement' },
+  ];
+
+  const countries = [
+    { value: 'US', label: 'United States' },
+    { value: 'UK', label: 'United Kingdom' },
+    { value: 'CA', label: 'Canada' },
+    { value: 'AU', label: 'Australia' },
+    { value: 'DE', label: 'Germany' },
+    { value: 'FR', label: 'France' },
+    { value: 'NL', label: 'Netherlands' },
+    { value: 'SG', label: 'Singapore' },
+    { value: 'International', label: 'International/Generic' },
+  ];
+
+  const businessTypes = [
+    { value: 'startup', label: 'Startup/Small Business' },
+    { value: 'corporation', label: 'Corporation' },
+    { value: 'llc', label: 'LLC' },
+    { value: 'freelancer', label: 'Freelancer/Individual' },
+    { value: 'nonprofit', label: 'Non-Profit' },
+    { value: 'partnership', label: 'Partnership' },
+  ];
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="bg-primary-100 p-2 rounded-lg">
                 <Wand2 className="h-6 w-6 text-primary-600" />
               </div>
-              <h2 className="text-xl font-semibold text-gray-900">Generate with AI</h2>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">AI Legal Assistant</h2>
+                <p className="text-sm text-gray-600">Generate professional legal documents with AI</p>
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -76,21 +102,64 @@ _Party 2 Signature: _________________ Date: _________
         </div>
 
         <div className="p-6 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Document Type
+              </label>
+              <select
+                value={templateType}
+                onChange={(e) => setTemplateType(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                {documentTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center space-x-1">
+                <Globe className="h-4 w-4" />
+                <span>Jurisdiction</span>
+              </label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                {countries.map((country) => (
+                  <option key={country.value} value={country.value}>
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Document Type
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center space-x-1">
+              <Building className="h-4 w-4" />
+              <span>Business Type</span>
             </label>
             <select
-              value={templateType}
-              onChange={(e) => setTemplateType(e.target.value)}
+              value={businessType}
+              onChange={(e) => setBusinessType(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
-              <option value="nda">Non-Disclosure Agreement (NDA)</option>
-              <option value="contract">Service Contract</option>
-              <option value="agreement">Partnership Agreement</option>
-              <option value="terms">Terms of Service</option>
-              <option value="privacy">Privacy Policy</option>
-              <option value="employment">Employment Agreement</option>
+              {businessTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -101,15 +170,28 @@ _Party 2 Signature: _________________ Date: _________
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="E.g., Create an NDA for a software development project between two companies, with a 2-year confidentiality period..."
+              placeholder="E.g., Create an NDA for a software development project between two companies, with a 2-year confidentiality period, covering proprietary algorithms and customer data..."
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
               rows={6}
             />
+            <p className="text-xs text-gray-500 mt-2">
+              Be specific about parties involved, duration, key terms, and any special requirements.
+            </p>
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Note:</strong> AI-generated documents should be reviewed by legal counsel before use. 
+            <h4 className="font-medium text-blue-900 mb-2">🤖 AI Legal Assistant Features:</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Context-aware legal document generation</li>
+              <li>• Jurisdiction-specific legal language</li>
+              <li>• Professional formatting and structure</li>
+              <li>• Complete clauses and signature blocks</li>
+            </ul>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-sm text-amber-800">
+              <strong>Legal Disclaimer:</strong> AI-generated documents should be reviewed by qualified legal counsel before use. 
               This tool provides templates and suggestions, not legal advice.
             </p>
           </div>
@@ -117,7 +199,8 @@ _Party 2 Signature: _________________ Date: _________
           <div className="flex space-x-4">
             <button
               onClick={onClose}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+              disabled={isGenerating}
+              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>

@@ -3,6 +3,7 @@ import { Save, Download, Wand2, FileText, ExternalLink, Sparkles, Loader2 } from
 import { useAuth } from '../contexts/AuthContext';
 import { summarizeDocument } from '../lib/gemini';
 import AIModal from './AIModal';
+import AIChat from './AIChat';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 
@@ -54,6 +55,11 @@ const DocEditor: React.FC<DocEditorProps> = ({
   const handleAIGenerate = (generatedContent: string) => {
     setContent(generatedContent);
     showToast('success', 'AI content generated successfully!');
+  };
+
+  const handleChatGenerate = (generatedContent: string) => {
+    setContent(generatedContent);
+    showToast('success', 'Document imported from AI chat!');
   };
 
   const handleSummarize = async (summaryType: 'brief' | 'detailed' | 'key_points') => {
@@ -268,6 +274,8 @@ const DocEditor: React.FC<DocEditorProps> = ({
         onClose={() => setIsAIModalOpen(false)}
         onGenerate={handleAIGenerate}
       />
+
+      <AIChat onDocumentGenerated={handleChatGenerate} />
 
       {/* Click outside to close menus */}
       {(showExportMenu || showSummaryMenu) && (
