@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Download, Wand2, FileText } from 'lucide-react';
+import { Save, Download, Wand2, FileText, ExternalLink } from 'lucide-react';
 import AIModal from './AIModal';
+import { exportToGoogle, getGoogleTokenStatus } from '../lib/google-integration';
 
 interface DocEditorProps {
   documentId: string;
@@ -19,11 +20,27 @@ const DocEditor: React.FC<DocEditorProps> = ({
   const [content, setContent] = useState(initialContent);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   useEffect(() => {
     setTitle(initialTitle);
     setContent(initialContent);
   }, [initialTitle, initialContent]);
+
+  useEffect(() => {
+    checkGoogleConnection();
+  }, []);
+
+  const checkGoogleConnection = async () => {
+    try {
+      const status = await getGoogleTokenStatus();
+      setGoogleConnected(status.connected);
+    } catch (error) {
+      console.error('Error checking Google connection:', error);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -38,9 +55,40 @@ const DocEditor: React.FC<DocEditorProps> = ({
     setContent(generatedContent);
   };
 
-  const handleExport = (format: string) => {
-    // Placeholder for export functionality
-    alert(`Export to ${format} coming soon!`);
+  const handleExportToPDF = () => {
+    // TODO: Implement PDF export functionality
+    alert('PDF export coming soon!');
+    setShowExportMenu(false);
+  };
+
+  const handleExportToGoogle = async (exportType: 'docs' | 'sheets') => {
+    if (!googleConnected) {
+      alert('Please connect your Google account in Account Settings first.');
+      return;
+    }
+
+    setIsExporting(true);
+    setShowExportMenu(false);
+
+    try {
+      const result = await exportToGoogle(documentId, title, content, exportType);
+      
+      if (result.success) {
+        alert(`Document exported to Google ${exportType === 'docs' ? 'Docs' : 'Sheets'} successfully!`);
+        if (result.google_url) {
+          window.open(result.google_url, '_blank');
+        }
+      } else if (result.requires_auth) {
+        alert('Google authentication required. Please reconnect your Google account in Account Settings.');
+      } else {
+        alert(result.message || 'Export failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -77,24 +125,48 @@ const DocEditor: React.FC<DocEditorProps> = ({
 
           <div className="flex items-center space-x-4">
             <div className="relative">
-              <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+              <button 
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={isExporting}
+                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
                 <Download className="h-4 w-4" />
-                <span>Export</span>
+                <span>{isExporting ? 'Exporting...' : 'Export'}</span>
               </button>
-              <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 hidden group-hover:block">
-                <button
-                  onClick={() => handleExport('PDF')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  Export as PDF
-                </button>
-                <button
-                  onClick={() => handleExport('Google Docs')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-500 cursor-not-allowed"
-                >
-                  Google Docs (Coming Soon)
-                </button>
-              </div>
+              
+              {showExportMenu && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-10">
+                  <button
+                    onClick={handleExportToPDF}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span>Export as PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportToGoogle('docs')}
+                    disabled={!googleConnected}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center space-x-2 ${
+                      googleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>Export to Google Docs</span>
+                    {!googleConnected && <span className="text-xs">(Connect Google)</span>}
+                  </button>
+                  <button
+                    onClick={() => handleExportToGoogle('sheets')}
+                    disabled={!googleConnected}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center space-x-2 ${
+                      googleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>Export to Google Sheets</span>
+                    {!googleConnected && <span className="text-xs">(Connect Google)</span>}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

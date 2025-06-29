@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Mail, Lock, CreditCard, Settings } from 'lucide-react';
 import SubscriptionStatus from '../components/SubscriptionStatus';
+import GoogleWorkspaceConnection from '../components/GoogleWorkspaceConnection';
 
 const Account: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -71,18 +72,8 @@ const Account: React.FC = () => {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Google Account</h3>
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">Google Drive & Docs</p>
-                    <p className="text-sm text-gray-600">Export documents directly to Google Drive</p>
-                  </div>
-                  <button className="border border-gray-300 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-                    Connect (Coming Soon)
-                  </button>
-                </div>
-              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Google Workspace</h3>
+              <GoogleWorkspaceConnection />
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">API Access</h3>
