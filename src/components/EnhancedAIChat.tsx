@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   MessageCircle, X, Send, Loader2, Bot, User, Sparkles, 
   Save, FileText, Edit3, Download, RotateCcw, Upload,
-  Mic, MicOff
+  Mic, MicOff, CheckCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,6 +26,7 @@ interface ChatAction {
   icon: React.ComponentType<{ className?: string }>;
   onClick: () => void;
   variant?: 'primary' | 'secondary' | 'success' | 'warning';
+  disabled?: boolean;
 }
 
 const EnhancedAIChat: React.FC = () => {
@@ -37,19 +38,21 @@ const EnhancedAIChat: React.FC = () => {
     {
       id: '1',
       type: 'assistant',
-      content: 'Hello! I\'m your Universal Legal Assistant AI v1.0 🤖. I can help you generate professional legal documents including GDPR-compliant privacy policies, NDAs, contracts, terms of service, and partnership agreements. I\'m trained on international law and can adapt to different jurisdictions. What would you like to create today?',
+      content: 'Hello! I\'m your Universal Legal Assistant AI v2.0 🤖. I can help you generate professional legal documents including GDPR-compliant privacy policies, NDAs, contracts, terms of service, and partnership agreements. I\'m trained on international law and can adapt to different jurisdictions. What would you like to create today?',
       timestamp: new Date(),
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [lastGeneratedContent, setLastGeneratedContent] = useState<string>('');
   const [lastDocumentId, setLastDocumentId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [documentSaved, setDocumentSaved] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,6 +61,15 @@ const EnhancedAIChat: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Focus input when chat opens or after processing
+  useEffect(() => {
+    if (isOpen && !isLoading && !isProcessing) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen, isLoading, isProcessing]);
 
   const addMessage = (type: 'user' | 'assistant', content: string, actions?: ChatAction[]) => {
     const newMessage: Message = {
@@ -68,6 +80,17 @@ const EnhancedAIChat: React.FC = () => {
       actions
     };
     setMessages(prev => [...prev, newMessage]);
+  };
+
+  const updateLastMessageActions = (newActions: ChatAction[]) => {
+    setMessages(prev => {
+      const updated = [...prev];
+      const lastAssistantMessage = updated.reverse().find(m => m.type === 'assistant');
+      if (lastAssistantMessage) {
+        lastAssistantMessage.actions = newActions;
+      }
+      return updated.reverse();
+    });
   };
 
   const createDocumentInDatabase = async (title: string, content: string): Promise<string | null> => {
@@ -92,56 +115,165 @@ const EnhancedAIChat: React.FC = () => {
     }
   };
 
+  const resetChatState = () => {
+    setIsLoading(false);
+    setIsProcessing(false);
+    setDocumentSaved(false);
+    // Re-enable input
+    if (inputRef.current) {
+      inputRef.current.disabled = false;
+      inputRef.current.focus();
+    }
+  };
+
+  const saveDocument = async (title: string, content: string, showRedirect: boolean = true) => {
+    setIsProcessing(true);
+    
+    try {
+      const documentId = await createDocumentInDatabase(title, content);
+      
+      if (documentId) {
+        setLastDocumentId(documentId);
+        setDocumentSaved(true);
+        
+        // Update actions to show document is saved
+        const updatedActions: ChatAction[] = [
+          {
+            id: 'saved',
+            label: '✅ Document Saved',
+            icon: CheckCircle,
+            onClick: () => {},
+            variant: 'success',
+            disabled: true
+          },
+          {
+            id: 'edit',
+            label: 'Edit Document',
+            icon: Edit3,
+            onClick: () => editDocument(documentId),
+            variant: 'primary'
+          },
+          {
+            id: 'download',
+            label: 'Download',
+            icon: Download,
+            onClick: downloadDocument,
+            variant: 'secondary'
+          },
+          {
+            id: 'new',
+            label: 'Create New',
+            icon: FileText,
+            onClick: startNewDocument,
+            variant: 'secondary'
+          }
+        ];
+        
+        updateLastMessageActions(updatedActions);
+        
+        if (showRedirect) {
+          showToast('success', 'Document saved! You can continue chatting or edit the document.');
+          
+          // Add confirmation message
+          addMessage('assistant', `🎉 Perfect! Your document has been saved successfully. You can now:
+• Click "Edit Document" to modify it in the editor
+• Continue our conversation to create more documents
+• Download the document for offline use
+
+What would you like to do next?`);
+        } else {
+          showToast('success', 'Document saved successfully!');
+        }
+        
+        return documentId;
+      } else {
+        throw new Error('Failed to save document');
+      }
+    } catch (error) {
+      console.error('Error saving document:', error);
+      showToast('error', 'Failed to save document. Please try again.');
+      return null;
+    } finally {
+      resetChatState();
+    }
+  };
+
   const saveAsDraft = async () => {
     if (!lastGeneratedContent) return;
     
     const title = `Draft Document - ${new Date().toLocaleDateString()}`;
-    const documentId = await createDocumentInDatabase(title, lastGeneratedContent);
-    
-    if (documentId) {
-      showToast('success', 'Document saved as draft!');
-      setLastDocumentId(documentId);
-    } else {
-      showToast('error', 'Failed to save draft');
-    }
+    await saveDocument(title, lastGeneratedContent, false);
   };
 
-  const editDocument = () => {
-    if (lastDocumentId) {
-      navigate(`/editor/${lastDocumentId}`);
+  const editDocument = (documentId?: string) => {
+    const idToUse = documentId || lastDocumentId;
+    
+    if (idToUse) {
+      // Close chat and navigate to editor
       setIsOpen(false);
+      navigate(`/editor/${idToUse}`);
     } else if (lastGeneratedContent) {
       // Create document first, then navigate to editor
+      setIsProcessing(true);
       createDocumentInDatabase('New Document', lastGeneratedContent).then(id => {
         if (id) {
-          navigate(`/editor/${id}`);
           setIsOpen(false);
+          navigate(`/editor/${id}`);
+        } else {
+          showToast('error', 'Failed to create document for editing');
+          resetChatState();
         }
       });
+    } else {
+      showToast('warning', 'No document available to edit');
     }
   };
 
   const downloadDocument = () => {
-    if (!lastGeneratedContent) return;
+    if (!lastGeneratedContent) {
+      showToast('warning', 'No document available to download');
+      return;
+    }
     
-    const blob = new Blob([lastGeneratedContent], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'legal-document.md';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([lastGeneratedContent], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'legal-document.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showToast('success', 'Document downloaded!');
+    } catch (error) {
+      showToast('error', 'Failed to download document');
+    }
+  };
+
+  const startNewDocument = () => {
+    setLastGeneratedContent('');
+    setLastDocumentId(null);
+    setDocumentSaved(false);
+    setShowQuickActions(true);
     
-    showToast('success', 'Document downloaded!');
+    addMessage('assistant', 'Great! I\'m ready to help you create a new legal document. What type of document would you like to generate?');
+    
+    // Focus input for new conversation
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   const generateNewVersion = () => {
     if (messages.length >= 2) {
       const lastUserMessage = messages.filter(m => m.type === 'user').pop();
       if (lastUserMessage) {
-        setInputValue(lastUserMessage.content + ' (generate a new version)');
+        setInputValue(lastUserMessage.content + ' (please generate a new version with improvements)');
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 100);
       }
     }
   };
@@ -154,6 +286,7 @@ const EnhancedAIChat: React.FC = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       setInputValue(`Please review and improve this document: ${content.substring(0, 1000)}...`);
+      setShowQuickActions(false);
     };
     reader.readAsText(file);
   };
@@ -179,6 +312,7 @@ const EnhancedAIChat: React.FC = () => {
       const transcript = event.results[0][0].transcript;
       setInputValue(transcript);
       setIsListening(false);
+      setShowQuickActions(false);
     };
 
     recognition.onerror = () => {
@@ -194,7 +328,7 @@ const EnhancedAIChat: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || isProcessing) return;
 
     if (!user) {
       showToast('warning', 'Please sign in to generate legal documents.');
@@ -220,38 +354,29 @@ const EnhancedAIChat: React.FC = () => {
         const documentTitle = generateDocumentTitle(documentType, country);
         
         setLastGeneratedContent(result.content);
+        setDocumentSaved(false);
         
+        // Create initial actions for the generated document
         const actions: ChatAction[] = [
           {
             id: 'save',
             label: 'Save Document',
             icon: Save,
-            onClick: async () => {
-              const documentId = await createDocumentInDatabase(documentTitle, result.content);
-              if (documentId) {
-                setLastDocumentId(documentId);
-                showToast('success', 'Document saved successfully!');
-                setIsRedirecting(true);
-                setTimeout(() => {
-                  setIsOpen(false);
-                  navigate(`/dashboard?highlight=${documentId}`);
-                }, 1500);
-              }
-            },
+            onClick: () => saveDocument(documentTitle, result.content),
             variant: 'primary'
           },
           {
             id: 'draft',
-            label: 'Keep as Draft',
+            label: 'Save as Draft',
             icon: FileText,
             onClick: saveAsDraft,
             variant: 'secondary'
           },
           {
             id: 'edit',
-            label: 'Edit Document',
+            label: 'Edit Now',
             icon: Edit3,
-            onClick: editDocument,
+            onClick: () => editDocument(),
             variant: 'success'
           },
           {
@@ -270,7 +395,8 @@ const EnhancedAIChat: React.FC = () => {
           }
         ];
         
-        addMessage('assistant', `✅ I've successfully generated a ${documentTypeLabel} document for ${country} jurisdiction. Here's what I created:\n\n${result.content.substring(0, 500)}...`, actions);
+        addMessage('assistant', `✅ I've successfully generated a ${documentTypeLabel} document for ${country} jurisdiction. The document includes all necessary legal sections and compliance requirements.\n\n**Preview:**\n${result.content.substring(0, 500)}...\n\n**What would you like to do with this document?**`, actions);
+        
       } else if (result.limit_reached) {
         addMessage('assistant', result.error || 'AI generation limit reached. Please upgrade your plan to continue generating documents.');
         showToast('warning', 'AI generation limit reached. Please upgrade your plan.');
@@ -284,21 +410,48 @@ const EnhancedAIChat: React.FC = () => {
       showToast('error', 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
+      // Ensure input is re-enabled and focused
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.disabled = false;
+          inputRef.current.focus();
+        }
+      }, 100);
     }
   };
 
   const handleQuickAction = (prompt: string) => {
     setInputValue(prompt);
     setShowQuickActions(false);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
-  // Detection functions (same as before)
+  const handleCloseChat = () => {
+    // Always allow closing the chat
+    setIsOpen(false);
+    
+    // Reset states when closing
+    setIsLoading(false);
+    setIsProcessing(false);
+    
+    // If there's a saved document, show success message
+    if (documentSaved && lastDocumentId) {
+      showToast('info', 'Your document is saved in the dashboard. You can access it anytime!');
+    }
+  };
+
+  // Detection functions
   const detectDocumentType = (message: string): string => {
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('privacy policy') || lowerMessage.includes('privacy') || lowerMessage.includes('gdpr')) return 'privacy';
     if (lowerMessage.includes('nda') || lowerMessage.includes('non-disclosure')) return 'nda';
     if (lowerMessage.includes('partnership')) return 'partnership';
     if (lowerMessage.includes('terms of service') || lowerMessage.includes('tos')) return 'terms';
+    if (lowerMessage.includes('employment')) return 'employment';
+    if (lowerMessage.includes('freelance')) return 'freelance';
+    if (lowerMessage.includes('consulting')) return 'consulting';
     return 'nda';
   };
 
@@ -307,6 +460,8 @@ const EnhancedAIChat: React.FC = () => {
     if (lowerMessage.includes('netherlands') || lowerMessage.includes('dutch')) return 'Netherlands';
     if (lowerMessage.includes('united states') || lowerMessage.includes('usa')) return 'US';
     if (lowerMessage.includes('united kingdom') || lowerMessage.includes('uk')) return 'UK';
+    if (lowerMessage.includes('germany') || lowerMessage.includes('german')) return 'DE';
+    if (lowerMessage.includes('france') || lowerMessage.includes('french')) return 'FR';
     return 'Netherlands';
   };
 
@@ -315,6 +470,7 @@ const EnhancedAIChat: React.FC = () => {
     if (lowerMessage.includes('startup')) return 'startup';
     if (lowerMessage.includes('corporation')) return 'corporation';
     if (lowerMessage.includes('saas')) return 'saas';
+    if (lowerMessage.includes('freelancer')) return 'freelancer';
     return 'startup';
   };
 
@@ -323,7 +479,10 @@ const EnhancedAIChat: React.FC = () => {
       'privacy': 'GDPR-Compliant Privacy Policy',
       'nda': 'Non-Disclosure Agreement (NDA)',
       'partnership': 'Partnership Agreement',
-      'terms': 'Terms of Service'
+      'terms': 'Terms of Service',
+      'employment': 'Employment Agreement',
+      'freelance': 'Freelance Contract',
+      'consulting': 'Consulting Agreement'
     };
     return labels[type] || type.toUpperCase();
   };
@@ -333,7 +492,10 @@ const EnhancedAIChat: React.FC = () => {
       'privacy': 'Privacy Policy',
       'nda': 'Non-Disclosure Agreement',
       'partnership': 'Partnership Agreement',
-      'terms': 'Terms of Service'
+      'terms': 'Terms of Service',
+      'employment': 'Employment Agreement',
+      'freelance': 'Freelance Contract',
+      'consulting': 'Consulting Agreement'
     };
     return `${typeLabels[type] || 'Legal Document'} (${country})`;
   };
@@ -342,21 +504,25 @@ const EnhancedAIChat: React.FC = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getActionButtonClasses = (variant: string = 'secondary') => {
+  const getActionButtonClasses = (variant: string = 'secondary', disabled: boolean = false) => {
     const baseClasses = 'flex items-center space-x-1 px-3 py-1 text-xs rounded-lg transition-colors';
+    const disabledClasses = disabled ? 'opacity-50 cursor-not-allowed' : '';
+    
     switch (variant) {
       case 'primary':
-        return `${baseClasses} bg-primary-600 text-white hover:bg-primary-700`;
+        return `${baseClasses} bg-primary-600 text-white hover:bg-primary-700 ${disabledClasses}`;
       case 'success':
-        return `${baseClasses} bg-green-600 text-white hover:bg-green-700`;
+        return `${baseClasses} bg-green-600 text-white hover:bg-green-700 ${disabledClasses}`;
       case 'warning':
-        return `${baseClasses} bg-yellow-600 text-white hover:bg-yellow-700`;
+        return `${baseClasses} bg-yellow-600 text-white hover:bg-yellow-700 ${disabledClasses}`;
       default:
-        return `${baseClasses} bg-gray-600 text-white hover:bg-gray-700`;
+        return `${baseClasses} bg-gray-600 text-white hover:bg-gray-700 ${disabledClasses}`;
     }
   };
 
   if (!user) return null;
+
+  const isInputDisabled = isLoading || isProcessing;
 
   return (
     <>
@@ -364,7 +530,7 @@ const EnhancedAIChat: React.FC = () => {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 z-40 group"
-          title="Enhanced Legal Assistant AI"
+          title="Enhanced Legal Assistant AI v2.0"
         >
           <div className="relative">
             <MessageCircle className="h-6 w-6" />
@@ -391,9 +557,9 @@ const EnhancedAIChat: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
-                disabled={isRedirecting}
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 rounded-lg transition-colors disabled:opacity-50"
+                onClick={handleCloseChat}
+                className="text-white hover:bg-white hover:bg-opacity-20 p-1 rounded-lg transition-colors"
+                title="Close chat"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -401,7 +567,7 @@ const EnhancedAIChat: React.FC = () => {
           </div>
 
           {/* Quick Actions */}
-          {showQuickActions && (
+          {showQuickActions && !isLoading && !isProcessing && (
             <div className="p-4 border-b border-gray-200 bg-gray-50">
               <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h4>
               <QuickActions onAction={handleQuickAction} />
@@ -435,7 +601,8 @@ const EnhancedAIChat: React.FC = () => {
                           <button
                             key={action.id}
                             onClick={action.onClick}
-                            className={getActionButtonClasses(action.variant)}
+                            disabled={action.disabled || isProcessing}
+                            className={getActionButtonClasses(action.variant, action.disabled)}
                           >
                             <Icon className="h-3 w-3" />
                             <span>{action.label}</span>
@@ -456,13 +623,13 @@ const EnhancedAIChat: React.FC = () => {
               </div>
             ))}
             
-            {isLoading && (
+            {(isLoading || isProcessing) && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 p-3 rounded-2xl">
                   <div className="flex items-center space-x-2">
                     <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
                     <span className="text-sm text-gray-600">
-                      {isRedirecting ? 'Creating document...' : 'Generating legal document...'}
+                      {isProcessing ? 'Processing document...' : 'Generating legal document...'}
                     </span>
                   </div>
                 </div>
@@ -477,15 +644,16 @@ const EnhancedAIChat: React.FC = () => {
             <div className="flex items-center space-x-2 mb-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
+                disabled={isInputDisabled}
+                className="p-2 text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
                 title="Upload document"
               >
                 <Upload className="h-4 w-4" />
               </button>
               <button
                 onClick={startVoiceInput}
-                disabled={isListening}
-                className={`p-2 transition-colors ${
+                disabled={isListening || isInputDisabled}
+                className={`p-2 transition-colors disabled:opacity-50 ${
                   isListening 
                     ? 'text-red-600 animate-pulse' 
                     : 'text-gray-600 hover:text-gray-900'
@@ -498,17 +666,18 @@ const EnhancedAIChat: React.FC = () => {
             
             <div className="flex space-x-2">
               <input
+                ref={inputRef}
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ask me to generate any legal document..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                disabled={isLoading || isRedirecting}
+                placeholder={isInputDisabled ? 'Processing...' : 'Ask me to generate any legal document...'}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                disabled={isInputDisabled}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading || isRedirecting}
+                disabled={!inputValue.trim() || isInputDisabled}
                 className="px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="h-4 w-4" />
@@ -524,7 +693,10 @@ const EnhancedAIChat: React.FC = () => {
             />
             
             <p className="text-xs text-gray-500 mt-2 text-center">
-              Enhanced with voice input, file upload, and advanced actions
+              {isInputDisabled 
+                ? 'Please wait while processing...' 
+                : 'Enhanced with voice input, file upload, and advanced actions'
+              }
             </p>
           </div>
         </div>
