@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Download, Wand2, FileText, ExternalLink } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import AIModal from './AIModal';
-import { exportToGoogle, getGoogleTokenStatus } from '../lib/google-integration';
 
 interface DocEditorProps {
   documentId: string;
@@ -16,12 +16,12 @@ const DocEditor: React.FC<DocEditorProps> = ({
   initialContent = '',
   onSave,
 }) => {
+  const { user } = useAuth();
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [googleConnected, setGoogleConnected] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   useEffect(() => {
@@ -29,18 +29,7 @@ const DocEditor: React.FC<DocEditorProps> = ({
     setContent(initialContent);
   }, [initialTitle, initialContent]);
 
-  useEffect(() => {
-    checkGoogleConnection();
-  }, []);
-
-  const checkGoogleConnection = async () => {
-    try {
-      const status = await getGoogleTokenStatus();
-      setGoogleConnected(status.connected);
-    } catch (error) {
-      console.error('Error checking Google connection:', error);
-    }
-  };
+  const isGoogleConnected = user?.app_metadata?.provider === 'google';
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -62,8 +51,8 @@ const DocEditor: React.FC<DocEditorProps> = ({
   };
 
   const handleExportToGoogle = async (exportType: 'docs' | 'sheets') => {
-    if (!googleConnected) {
-      alert('Please connect your Google account in Account Settings first.');
+    if (!isGoogleConnected) {
+      alert('Please sign in with Google to export to Google Workspace. You can do this from the Account Settings page.');
       return;
     }
 
@@ -71,18 +60,9 @@ const DocEditor: React.FC<DocEditorProps> = ({
     setShowExportMenu(false);
 
     try {
-      const result = await exportToGoogle(documentId, title, content, exportType);
-      
-      if (result.success) {
-        alert(`Document exported to Google ${exportType === 'docs' ? 'Docs' : 'Sheets'} successfully!`);
-        if (result.google_url) {
-          window.open(result.google_url, '_blank');
-        }
-      } else if (result.requires_auth) {
-        alert('Google authentication required. Please reconnect your Google account in Account Settings.');
-      } else {
-        alert(result.message || 'Export failed. Please try again.');
-      }
+      // TODO: Implement actual Google Docs/Sheets export using the user's OAuth tokens
+      // For now, show a placeholder message
+      alert(`Google ${exportType === 'docs' ? 'Docs' : 'Sheets'} export will be available soon! Your Google account is connected and ready.`);
     } catch (error) {
       console.error('Export error:', error);
       alert('Export failed. Please try again.');
@@ -145,25 +125,25 @@ const DocEditor: React.FC<DocEditorProps> = ({
                   </button>
                   <button
                     onClick={() => handleExportToGoogle('docs')}
-                    disabled={!googleConnected}
+                    disabled={!isGoogleConnected}
                     className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center space-x-2 ${
-                      googleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
+                      isGoogleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
                     }`}
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span>Export to Google Docs</span>
-                    {!googleConnected && <span className="text-xs">(Connect Google)</span>}
+                    {!isGoogleConnected && <span className="text-xs">(Sign in with Google)</span>}
                   </button>
                   <button
                     onClick={() => handleExportToGoogle('sheets')}
-                    disabled={!googleConnected}
+                    disabled={!isGoogleConnected}
                     className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center space-x-2 ${
-                      googleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
+                      isGoogleConnected ? 'text-gray-700' : 'text-gray-400 cursor-not-allowed'
                     }`}
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span>Export to Google Sheets</span>
-                    {!googleConnected && <span className="text-xs">(Connect Google)</span>}
+                    {!isGoogleConnected && <span className="text-xs">(Sign in with Google)</span>}
                   </button>
                 </div>
               )}

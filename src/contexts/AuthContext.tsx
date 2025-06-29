@@ -38,10 +38,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Handle successful sign-in redirects
+      if (event === 'SIGNED_IN' && session) {
+        // If user signed in via OAuth, redirect to dashboard
+        if (session.user.app_metadata.provider === 'google') {
+          window.location.href = '/dashboard';
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -68,6 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/dashboard`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+        scopes: 'openid email profile https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
       },
     });
     return { data, error };

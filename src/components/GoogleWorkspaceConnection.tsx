@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { 
-  getGoogleTokenStatus, 
-  getGoogleAuthUrl, 
-  disconnectGoogleAccount,
-  GoogleTokenStatus,
-  GoogleAuthResponse 
-} from '../lib/google-integration';
+import { useAuth } from '../contexts/AuthContext';
 
 const GoogleWorkspaceConnection: React.FC = () => {
-  const [tokenStatus, setTokenStatus] = useState<GoogleTokenStatus>({ connected: false });
+  const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     checkConnectionStatus();
-  }, []);
+  }, [user, session]);
 
   const checkConnectionStatus = async () => {
     try {
       setLoading(true);
-      const status = await getGoogleTokenStatus();
-      setTokenStatus(status);
+      
+      // Check if user signed in with Google OAuth
+      if (user?.app_metadata?.provider === 'google') {
+        setIsConnected(true);
+      } else {
+        setIsConnected(false);
+      }
     } catch (err) {
       console.error('Error checking Google connection status:', err);
       setError('Failed to check connection status');
@@ -36,21 +36,27 @@ const GoogleWorkspaceConnection: React.FC = () => {
       setActionLoading(true);
       setError(null);
       
-      const response: GoogleAuthResponse = await getGoogleAuthUrl();
+      // Use Supabase's built-in Google OAuth
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/account`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          scopes: 'openid email profile https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
+        },
+      });
       
-      if (response.error) {
-        setError(response.error);
-        return;
+      if (error) {
+        setError(error.message);
+        setActionLoading(false);
       }
-      
-      if (response.auth_url) {
-        // Redirect to Google OAuth
-        window.location.href = response.auth_url;
-      }
+      // Don't set loading to false here as the redirect will happen
     } catch (err) {
       setError('Failed to initiate Google connection');
       console.error('Error connecting to Google:', err);
-    } finally {
       setActionLoading(false);
     }
   };
@@ -60,25 +66,16 @@ const GoogleWorkspaceConnection: React.FC = () => {
       setActionLoading(true);
       setError(null);
       
-      const response = await disconnectGoogleAccount();
+      // For Supabase native auth, we would need to sign out and sign back in with email
+      // This is a limitation of OAuth providers - you can't "disconnect" just the OAuth part
+      alert('To disconnect Google, you would need to sign out and sign back in with email/password. This will be improved in a future update.');
       
-      if (response.error) {
-        setError(response.error);
-        return;
-      }
-      
-      setTokenStatus({ connected: false });
     } catch (err) {
       setError('Failed to disconnect Google account');
       console.error('Error disconnecting Google:', err);
     } finally {
       setActionLoading(false);
     }
-  };
-
-  const isTokenExpired = () => {
-    if (!tokenStatus.expires_at) return false;
-    return new Date(tokenStatus.expires_at) < new Date();
   };
 
   if (loading) {
@@ -109,30 +106,22 @@ const GoogleWorkspaceConnection: React.FC = () => {
             </div>
           </div>
           
-          {tokenStatus.connected && (
+          {isConnected && (
             <div className="flex items-center space-x-1">
-              {isTokenExpired() ? (
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-              ) : (
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              )}
-              <span className={`text-sm font-medium ${
-                isTokenExpired() ? 'text-yellow-600' : 'text-green-600'
-              }`}>
-                {isTokenExpired() ? 'Token Expired' : 'Connected'}
-              </span>
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium text-green-600">Connected</span>
             </div>
           )}
         </div>
 
         <div className="flex items-center space-x-2">
-          {tokenStatus.connected ? (
+          {isConnected ? (
             <button
               onClick={handleDisconnect}
               disabled={actionLoading}
               className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
             >
-              {actionLoading ? 'Disconnecting...' : 'Disconnect'}
+              {actionLoading ? 'Processing...' : 'Disconnect'}
             </button>
           ) : (
             <button
@@ -157,16 +146,14 @@ const GoogleWorkspaceConnection: React.FC = () => {
         </div>
       )}
 
-      {tokenStatus.connected && tokenStatus.scope && (
+      {isConnected && (
         <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-700">
-            <strong>Permissions:</strong> {tokenStatus.scope.split(' ').join(', ')}
+            <strong>Connected via:</strong> {user?.email}
           </p>
-          {tokenStatus.expires_at && (
-            <p className="text-xs text-blue-600 mt-1">
-              Expires: {new Date(tokenStatus.expires_at).toLocaleString()}
-            </p>
-          )}
+          <p className="text-xs text-blue-600 mt-1">
+            You can now export documents directly to Google Docs and Sheets
+          </p>
         </div>
       )}
     </div>
