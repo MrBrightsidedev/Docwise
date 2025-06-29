@@ -1,27 +1,58 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle, ArrowRight, FileText } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { CheckCircle, ArrowRight, FileText, Loader2 } from 'lucide-react';
+import { refreshSubscriptionData } from '../lib/subscription';
 
 const Success: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionId = searchParams.get('session_id');
   const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'pending' | 'success' | 'error'>('pending');
 
   useEffect(() => {
-    // Simulate a brief loading period to show the success state
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+    const handlePaymentSuccess = async () => {
+      try {
+        setLoading(true);
+        
+        // Wait a moment for Stripe webhook to process
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Refresh subscription data to sync with payment
+        const result = await refreshSubscriptionData();
+        
+        if (result.synced && result.usage) {
+          setSyncStatus('success');
+          console.log('Subscription successfully synced:', result.usage.plan);
+        } else {
+          setSyncStatus('error');
+          console.warn('Subscription sync may have failed');
+        }
+      } catch (error) {
+        console.error('Error handling payment success:', error);
+        setSyncStatus('error');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return () => clearTimeout(timer);
+    handlePaymentSuccess();
   }, []);
+
+  const handleGoToDashboard = () => {
+    // Force a page refresh to ensure all components reload with new subscription data
+    window.location.href = '/dashboard';
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Processing your payment...</p>
+          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md">
+            <Loader2 className="h-12 w-12 animate-spin text-primary-600 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Processing your payment...</h2>
+            <p className="text-gray-600">We're updating your account with your new subscription.</p>
+          </div>
         </div>
       </div>
     );
@@ -41,6 +72,26 @@ const Success: React.FC = () => {
             </p>
           </div>
 
+          {/* Sync Status */}
+          <div className="mb-6">
+            {syncStatus === 'success' && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-sm text-green-800 font-medium">
+                  ✅ Your account has been updated with your new subscription!
+                </p>
+              </div>
+            )}
+            
+            {syncStatus === 'error' && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Your payment was successful, but it may take a few minutes for your account to update. 
+                  Please refresh the page or contact support if issues persist.
+                </p>
+              </div>
+            )}
+          </div>
+
           {sessionId && (
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
               <p className="text-sm text-gray-600 mb-1">Session ID</p>
@@ -49,18 +100,18 @@ const Success: React.FC = () => {
           )}
 
           <div className="space-y-3">
-            <Link
-              to="/dashboard"
+            <button
+              onClick={handleGoToDashboard}
               className="w-full bg-primary-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center space-x-2"
             >
               <FileText className="h-4 w-4" />
               <span>Go to Dashboard</span>
               <ArrowRight className="h-4 w-4" />
-            </Link>
+            </button>
             
             <Link
               to="/account"
-              className="w-full border border-gray-300 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+              className="w-full border border-gray-300 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-50 transition-colors block"
             >
               View Account Settings
             </Link>

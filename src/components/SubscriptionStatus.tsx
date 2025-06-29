@@ -1,27 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Calendar, CreditCard, AlertCircle } from 'lucide-react';
-import { getUserSubscription, UserSubscription } from '../lib/stripe';
+import { Crown, Calendar, CreditCard, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
+import { useSubscription } from '../hooks/useSubscription';
 import { getProductByPriceId } from '../stripe-config';
 
 const SubscriptionStatus: React.FC = () => {
-  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { subscription, usage, limits, loading, error, refresh } = useSubscription();
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchSubscription();
-  }, []);
-
-  const fetchSubscription = async () => {
+  const handleRefresh = async () => {
+    setRefreshing(true);
     try {
-      setLoading(true);
-      const data = await getUserSubscription();
-      setSubscription(data);
-    } catch (err) {
-      setError('Failed to load subscription information');
-      console.error('Error fetching subscription:', err);
+      await refresh();
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -39,9 +30,18 @@ const SubscriptionStatus: React.FC = () => {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-        <div className="flex items-center space-x-2">
-          <AlertCircle className="h-5 w-5 text-red-500" />
-          <span className="text-red-700 text-sm">{error}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <span className="text-red-700 text-sm">{error}</span>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="text-red-600 hover:text-red-800 text-sm font-medium"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -69,6 +69,7 @@ const SubscriptionStatus: React.FC = () => {
   };
 
   const product = subscription?.price_id ? getProductByPriceId(subscription.price_id) : null;
+  const currentPlan = usage?.plan || 'free';
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
@@ -77,57 +78,106 @@ const SubscriptionStatus: React.FC = () => {
           <Crown className="h-6 w-6 text-yellow-600" />
           <h3 className="text-lg font-semibold text-gray-900">Subscription Status</h3>
         </div>
-        {subscription?.subscription_status && (
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(subscription.subscription_status)}`}>
-            {subscription.subscription_status.replace('_', ' ').toUpperCase()}
-          </span>
-        )}
+        <div className="flex items-center space-x-2">
+          {subscription?.subscription_status && (
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(subscription.subscription_status)}`}>
+              {subscription.subscription_status.replace('_', ' ').toUpperCase()}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Refresh subscription data"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
-      {subscription?.subscription_id ? (
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-gray-600">Current Plan</p>
-            <p className="text-lg font-semibold text-gray-900">
-              {product?.name || 'Unknown Plan'}
+      <div className="space-y-4">
+        {/* Current Plan */}
+        <div>
+          <p className="text-sm font-medium text-gray-600">Current Plan</p>
+          <div className="flex items-center space-x-2">
+            <p className="text-lg font-semibold text-gray-900 capitalize">
+              {currentPlan}
             </p>
-            {product?.description && (
-              <p className="text-sm text-gray-600">{product.description}</p>
+            {subscription?.subscription_status === 'active' && (
+              <CheckCircle className="h-4 w-4 text-green-500" />
             )}
           </div>
-
-          {subscription.current_period_end && (
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-600">
-                {subscription.cancel_at_period_end ? 'Expires' : 'Renews'} on {formatDate(subscription.current_period_end)}
-              </span>
-            </div>
-          )}
-
-          {subscription.payment_method_brand && subscription.payment_method_last4 && (
-            <div className="flex items-center space-x-2">
-              <CreditCard className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-600">
-                {subscription.payment_method_brand.toUpperCase()} ending in {subscription.payment_method_last4}
-              </span>
-            </div>
-          )}
-
-          {subscription.cancel_at_period_end && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-800">
-                Your subscription will not renew and will end on {formatDate(subscription.current_period_end)}.
-              </p>
-            </div>
+          {product?.description && (
+            <p className="text-sm text-gray-600">{product.description}</p>
           )}
         </div>
-      ) : (
-        <div className="text-center py-4">
-          <p className="text-gray-600 mb-2">No active subscription</p>
-          <p className="text-sm text-gray-500">Upgrade to access premium features</p>
+
+        {/* Plan Features */}
+        <div>
+          <p className="text-sm font-medium text-gray-600 mb-2">Plan Features</p>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500">AI Generations:</span>
+              <span className="ml-1 font-medium">
+                {limits.aiGenerations === -1 ? 'Unlimited' : limits.aiGenerations}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Documents:</span>
+              <span className="ml-1 font-medium">
+                {limits.documents === -1 ? 'Unlimited' : limits.documents}
+              </span>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Subscription Details */}
+        {subscription?.subscription_id ? (
+          <div className="space-y-3">
+            {subscription.current_period_end && (
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-4 w-4 text-gray-400" />
+                <span className="text-sm text-gray-600">
+                  {subscription.cancel_at_period_end ? 'Expires' : 'Renews'} on {formatDate(subscription.current_period_end)}
+                </span>
+              </div>
+            )}
+
+            {subscription.payment_method_brand && subscription.payment_method_last4 && (
+              <div className="flex items-center space-x-2">
+                <CreditCard className="h-4 w-4 text-gray-400" />
+                <span className="text-sm text-gray-600">
+                  {subscription.payment_method_brand.toUpperCase()} ending in {subscription.payment_method_last4}
+                </span>
+              </div>
+            )}
+
+            {subscription.cancel_at_period_end && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  Your subscription will not renew and will end on {formatDate(subscription.current_period_end)}.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-gray-600 mb-2">No active subscription</p>
+            <p className="text-sm text-gray-500">Upgrade to access premium features</p>
+          </div>
+        )}
+
+        {/* Usage Summary */}
+        {usage && (
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-sm font-medium text-gray-700 mb-2">Current Usage</p>
+            <div className="text-xs text-gray-600 space-y-1">
+              <div>AI Generations: {usage.ai_generations_used} used</div>
+              <div>Last updated: {new Date(usage.updated_at).toLocaleDateString()}</div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

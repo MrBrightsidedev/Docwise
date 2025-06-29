@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, FileText, TrendingUp, Crown, Upload } from 'lucide-react';
+import { Plus, FileText, TrendingUp, Crown, Upload, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useSubscription } from '../hooks/useSubscription';
 import DocCard from '../components/DocCard';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import Toast from '../components/Toast';
@@ -15,23 +16,18 @@ interface Document {
   created_at: string;
 }
 
-interface UserUsage {
-  ai_generations_used: number;
-  plan: 'free' | 'pro' | 'business';
-}
-
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast, showToast, hideToast } = useToast();
+  const { subscription, usage, limits, usageCheck, loading: subscriptionLoading, refresh: refreshSubscription } = useSubscription();
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [userUsage, setUserUsage] = useState<UserUsage>({ ai_generations_used: 0, plan: 'free' });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchDocuments();
-      fetchUserUsage();
     }
   }, [user]);
 
@@ -48,40 +44,18 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching documents:', error);
       showToast('error', 'Failed to load documents. Please try again.');
-    }
-  };
-
-  const fetchUserUsage = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('user_usage')
-        .select('*')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      
-      if (data) {
-        setUserUsage(data);
-      } else {
-        // Create initial usage record
-        const { data: newUsage, error: insertError } = await supabase
-          .from('user_usage')
-          .insert([{ user_id: user?.id, ai_generations_used: 0, plan: 'free' }])
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        setUserUsage(newUsage);
-      }
-    } catch (error) {
-      console.error('Error fetching user usage:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const createNewDocument = async () => {
+    // Check if user can create more documents
+    if (!usageCheck.canCreateDocument) {
+      showToast('warning', `Document limit reached (${usageCheck.documentUsage.used}/${usageCheck.documentUsage.limit}). Please upgrade your plan.`);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('documents')
@@ -128,22 +102,35 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const getPlanLimits = (plan: string) => {
-    switch (plan) {
-      case 'free':
-        return { aiGenerations: 1, documents: 3 };
-      case 'pro':
-        return { aiGenerations: 10, documents: 50 };
-      case 'business':
-        return { aiGenerations: -1, documents: -1 }; // Unlimited
-      default:
-        return { aiGenerations: 1, documents: 3 };
+  const handleRefreshSubscription = async () => {
+    setRefreshing(true);
+    try {
+      await refreshSubscription();
+      showToast('success', 'Subscription data refreshed!');
+    } catch (error) {
+      showToast('error', 'Failed to refresh subscription data.');
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const limits = getPlanLimits(userUsage.plan);
+  const getSubscriptionBadge = () => {
+    if (!usage) return null;
+    
+    const planColors = {
+      free: 'bg-gray-100 text-gray-800',
+      pro: 'bg-blue-100 text-blue-800',
+      business: 'bg-purple-100 text-purple-800'
+    };
 
-  if (loading) {
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${planColors[usage.plan]}`}>
+        {usage.plan.charAt(0).toUpperCase() + usage.plan.slice(1)}
+      </span>
+    );
+  };
+
+  if (loading || subscriptionLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -172,12 +159,25 @@ const Dashboard: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {user?.email?.split('@')[0]}!
-          </h1>
-          <p className="text-gray-600">
-            Manage your legal documents and generate new ones with AI assistance.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                Welcome back, {user?.email?.split('@')[0]}!
+              </h1>
+              <p className="text-gray-600">
+                Manage your legal documents and generate new ones with AI assistance.
+              </p>
+            </div>
+            <button
+              onClick={handleRefreshSubscription}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              title="Refresh subscription data"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -186,10 +186,27 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Documents</p>
-                <p className="text-2xl font-bold text-gray-900">{documents.length}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {documents.length}
+                  {usageCheck.documentUsage.limit > 0 && (
+                    <span className="text-sm text-gray-500">/{usageCheck.documentUsage.limit}</span>
+                  )}
+                </p>
               </div>
               <FileText className="h-8 w-8 text-primary-600" />
             </div>
+            {usageCheck.documentUsage.limit > 0 && (
+              <div className="mt-3">
+                <div className="bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min((usageCheck.documentUsage.used / usageCheck.documentUsage.limit) * 100, 100)}%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
@@ -197,21 +214,21 @@ const Dashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">AI Generations Used</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {userUsage.ai_generations_used}
-                  {limits.aiGenerations > 0 && (
-                    <span className="text-sm text-gray-500">/{limits.aiGenerations}</span>
+                  {usageCheck.aiUsage.used}
+                  {usageCheck.aiUsage.limit > 0 && (
+                    <span className="text-sm text-gray-500">/{usageCheck.aiUsage.limit}</span>
                   )}
                 </p>
               </div>
               <TrendingUp className="h-8 w-8 text-green-600" />
             </div>
-            {limits.aiGenerations > 0 && (
+            {usageCheck.aiUsage.limit > 0 && (
               <div className="mt-3">
                 <div className="bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-green-600 h-2 rounded-full transition-all duration-300"
                     style={{
-                      width: `${Math.min((userUsage.ai_generations_used / limits.aiGenerations) * 100, 100)}%`,
+                      width: `${Math.min((usageCheck.aiUsage.used / usageCheck.aiUsage.limit) * 100, 100)}%`,
                     }}
                   ></div>
                 </div>
@@ -223,11 +240,16 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Current Plan</p>
-                <p className="text-2xl font-bold text-gray-900 capitalize">{userUsage.plan}</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-2xl font-bold text-gray-900 capitalize">
+                    {usage?.plan || 'Free'}
+                  </p>
+                  {getSubscriptionBadge()}
+                </div>
               </div>
               <Crown className="h-8 w-8 text-yellow-600" />
             </div>
-            {userUsage.plan === 'free' && (
+            {usage?.plan === 'free' && (
               <Link
                 to="/pricing"
                 className="mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
@@ -238,8 +260,28 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Subscription Status Banner */}
+        {subscription?.subscription_status === 'active' && usage?.plan !== 'free' && (
+          <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">🎉 Premium Active!</h3>
+                <p className="opacity-90">
+                  You're on the {usage.plan.charAt(0).toUpperCase() + usage.plan.slice(1)} plan with full access to all features.
+                </p>
+              </div>
+              <Link
+                to="/account"
+                className="bg-white text-green-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-100 transition-colors shadow-md"
+              >
+                Manage Subscription
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Upgrade Banner for Free Users */}
-        {userUsage.plan === 'free' && (
+        {usage?.plan === 'free' && (
           <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -258,12 +300,33 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Usage Limit Warnings */}
+        {!usageCheck.canUseAI && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6">
+            <p className="text-yellow-800">
+              ⚠️ You've reached your AI generation limit ({usageCheck.aiUsage.used}/{usageCheck.aiUsage.limit}). 
+              <Link to="/pricing" className="font-medium underline ml-1">Upgrade your plan</Link> to continue generating documents.
+            </p>
+          </div>
+        )}
+
+        {!usageCheck.canCreateDocument && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6">
+            <p className="text-yellow-800">
+              ⚠️ You've reached your document limit ({usageCheck.documentUsage.used}/{usageCheck.documentUsage.limit}). 
+              <Link to="/pricing" className="font-medium underline ml-1">Upgrade your plan</Link> to create more documents.
+            </p>
+          </div>
+        )}
+
         {/* Documents Section */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Your Documents</h2>
           <button
             onClick={createNewDocument}
-            className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg"
+            disabled={!usageCheck.canCreateDocument}
+            className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md hover:shadow-lg"
+            title={!usageCheck.canCreateDocument ? 'Document limit reached' : 'Create new document'}
           >
             <Plus className="h-5 w-5" />
             <span>New Document</span>
@@ -281,7 +344,8 @@ const Dashboard: React.FC = () => {
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
                   onClick={createNewDocument}
-                  className="flex items-center justify-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors"
+                  disabled={!usageCheck.canCreateDocument}
+                  className="flex items-center justify-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Plus className="h-5 w-5" />
                   <span>Add Document</span>

@@ -13,6 +13,12 @@ const stripe = new Stripe(stripeSecret, {
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
+// Map Stripe price IDs to plan names
+const PRICE_ID_TO_PLAN: Record<string, 'pro' | 'business'> = {
+  'price_1RfLWW2cKms2tazUxzjrznUQ': 'pro', // Test subscription pro
+  'price_1RfLXW2cKms2tazUSxzTlOW1': 'business', // Enterprise test subscription
+};
+
 Deno.serve(async (req) => {
   try {
     // Handle OPTIONS request for CORS preflight
@@ -135,9 +141,24 @@ async function syncCustomerFromStripe(customerId: string) {
       expand: ['data.default_payment_method'],
     });
 
-    // TODO verify if needed
+    // Get the customer's user_id from our database
+    const { data: customerData, error: customerError } = await supabase
+      .from('stripe_customers')
+      .select('user_id')
+      .eq('customer_id', customerId)
+      .single();
+
+    if (customerError || !customerData) {
+      console.error('Could not find user for customer:', customerId);
+      return;
+    }
+
+    const userId = customerData.user_id;
+
     if (subscriptions.data.length === 0) {
       console.info(`No active subscriptions found for customer: ${customerId}`);
+      
+      // Update subscription status to not_started
       const { error: noSubError } = await supabase.from('stripe_subscriptions').upsert(
         {
           customer_id: customerId,
@@ -152,10 +173,17 @@ async function syncCustomerFromStripe(customerId: string) {
         console.error('Error updating subscription status:', noSubError);
         throw new Error('Failed to update subscription status in database');
       }
+
+      // Update user plan to free
+      await updateUserPlan(userId, 'free');
+      return;
     }
 
     // assumes that a customer can only have a single subscription
     const subscription = subscriptions.data[0];
+
+    // Determine plan based on price_id
+    const plan = PRICE_ID_TO_PLAN[subscription.items.data[0].price.id] || 'free';
 
     // store subscription state
     const { error: subError } = await supabase.from('stripe_subscriptions').upsert(
@@ -183,9 +211,41 @@ async function syncCustomerFromStripe(customerId: string) {
       console.error('Error syncing subscription:', subError);
       throw new Error('Failed to sync subscription in database');
     }
-    console.info(`Successfully synced subscription for customer: ${customerId}`);
+
+    // Update user plan based on subscription status
+    if (subscription.status === 'active') {
+      await updateUserPlan(userId, plan);
+    } else {
+      await updateUserPlan(userId, 'free');
+    }
+
+    console.info(`Successfully synced subscription for customer: ${customerId}, plan: ${plan}`);
   } catch (error) {
     console.error(`Failed to sync subscription for customer ${customerId}:`, error);
+    throw error;
+  }
+}
+
+async function updateUserPlan(userId: string, plan: 'free' | 'pro' | 'business') {
+  try {
+    const { error } = await supabase
+      .from('user_usage')
+      .upsert({
+        user_id: userId,
+        plan: plan,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (error) {
+      console.error('Error updating user plan:', error);
+      throw error;
+    }
+
+    console.info(`Updated user ${userId} plan to: ${plan}`);
+  } catch (error) {
+    console.error(`Failed to update user plan for ${userId}:`, error);
     throw error;
   }
 }
