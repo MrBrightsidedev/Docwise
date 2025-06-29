@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, FileText, TrendingUp, Crown } from 'lucide-react';
+import { Plus, FileText, TrendingUp, Crown, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import DocCard from '../components/DocCard';
+import LoadingSkeleton from '../components/LoadingSkeleton';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 
 interface Document {
   id: string;
@@ -20,6 +23,7 @@ interface UserUsage {
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast, showToast, hideToast } = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [userUsage, setUserUsage] = useState<UserUsage>({ ai_generations_used: 0, plan: 'free' });
   const [loading, setLoading] = useState(true);
@@ -43,6 +47,7 @@ const Dashboard: React.FC = () => {
       setDocuments(data || []);
     } catch (error) {
       console.error('Error fetching documents:', error);
+      showToast('error', 'Failed to load documents. Please try again.');
     }
   };
 
@@ -91,9 +96,35 @@ const Dashboard: React.FC = () => {
         .single();
 
       if (error) throw error;
+      showToast('success', 'New document created successfully!');
       navigate(`/editor/${data.id}`);
     } catch (error) {
       console.error('Error creating document:', error);
+      showToast('error', 'Failed to create document. Please try again.');
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      // Optimistic update - remove from UI immediately
+      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', documentId)
+        .eq('user_id', user?.id);
+
+      if (error) {
+        // Revert optimistic update on error
+        await fetchDocuments();
+        throw error;
+      }
+
+      showToast('success', 'Document deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      showToast('error', 'Failed to delete document. Please try again.');
     }
   };
 
@@ -114,10 +145,23 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your dashboard...</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            <div className="bg-gray-200 h-8 rounded w-1/3 mb-2 animate-pulse"></div>
+            <div className="bg-gray-200 h-5 rounded w-1/2 animate-pulse"></div>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-6 mb-8">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 animate-pulse">
+                <div className="bg-gray-200 h-6 rounded w-3/4 mb-2"></div>
+                <div className="bg-gray-200 h-8 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+
+          <LoadingSkeleton count={3} />
         </div>
       </div>
     );
@@ -138,7 +182,7 @@ const Dashboard: React.FC = () => {
 
         {/* Stats Cards */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Documents</p>
@@ -148,7 +192,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">AI Generations Used</p>
@@ -165,7 +209,7 @@ const Dashboard: React.FC = () => {
               <div className="mt-3">
                 <div className="bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-green-600 h-2 rounded-full"
+                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
                     style={{
                       width: `${Math.min((userUsage.ai_generations_used / limits.aiGenerations) * 100, 100)}%`,
                     }}
@@ -175,7 +219,7 @@ const Dashboard: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Current Plan</p>
@@ -186,7 +230,7 @@ const Dashboard: React.FC = () => {
             {userUsage.plan === 'free' && (
               <Link
                 to="/pricing"
-                className="mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                className="mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
               >
                 Upgrade Plan →
               </Link>
@@ -196,7 +240,7 @@ const Dashboard: React.FC = () => {
 
         {/* Upgrade Banner for Free Users */}
         {userUsage.plan === 'free' && (
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-6 mb-8 text-white">
+          <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold mb-2">Unlock More Features</h3>
@@ -206,7 +250,7 @@ const Dashboard: React.FC = () => {
               </div>
               <Link
                 to="/pricing"
-                className="bg-white text-primary-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+                className="bg-white text-primary-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-100 transition-colors shadow-md"
               >
                 Upgrade Now
               </Link>
@@ -219,7 +263,7 @@ const Dashboard: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-900">Your Documents</h2>
           <button
             onClick={createNewDocument}
-            className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors"
+            className="flex items-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg"
           >
             <Plus className="h-5 w-5" />
             <span>New Document</span>
@@ -227,18 +271,27 @@ const Dashboard: React.FC = () => {
         </div>
 
         {documents.length === 0 ? (
-          <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center">
-            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No documents yet</h3>
-            <p className="text-gray-600 mb-6">
-              Create your first legal document with AI assistance.
-            </p>
-            <button
-              onClick={createNewDocument}
-              className="bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors"
-            >
-              Create Your First Document
-            </button>
+          <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center">
+            <div className="max-w-md mx-auto">
+              <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No documents yet</h3>
+              <p className="text-gray-600 mb-6">
+                Upload or connect a Google Doc to get started, or create your first legal document with AI assistance.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={createNewDocument}
+                  className="flex items-center justify-center space-x-2 bg-primary-600 text-white px-6 py-3 rounded-xl hover:bg-primary-700 transition-colors"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span>Add Document</span>
+                </button>
+                <button className="flex items-center justify-center space-x-2 border border-gray-300 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-50 transition-colors">
+                  <Upload className="h-5 w-5" />
+                  <span>Upload File</span>
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -249,11 +302,19 @@ const Dashboard: React.FC = () => {
                 title={doc.title}
                 createdAt={doc.created_at}
                 content={doc.content}
+                onDelete={handleDeleteDocument}
               />
             ))}
           </div>
         )}
       </div>
+
+      <Toast
+        type={toast.type}
+        message={toast.message}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+      />
     </div>
   );
 };

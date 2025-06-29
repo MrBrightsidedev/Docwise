@@ -57,7 +57,7 @@ _Party 2 Signature: _________________ Date: _________
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -68,7 +68,7 @@ _Party 2 Signature: _________________ Date: _________
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 p-1"
+              className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <X className="h-6 w-6" />
             </button>
@@ -89,6 +89,8 @@ _Party 2 Signature: _________________ Date: _________
               <option value="contract">Service Contract</option>
               <option value="agreement">Partnership Agreement</option>
               <option value="terms">Terms of Service</option>
+              <option value="privacy">Privacy Policy</option>
+              <option value="employment">Employment Agreement</option>
             </select>
           </div>
 
@@ -105,6 +107,13 @@ _Party 2 Signature: _________________ Date: _________
             />
           </div>
 
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> AI-generated documents should be reviewed by legal counsel before use. 
+              This tool provides templates and suggestions, not legal advice.
+            </p>
+          </div>
+
           <div className="flex space-x-4">
             <button
               onClick={onClose}
@@ -115,7 +124,7 @@ _Party 2 Signature: _________________ Date: _________
             <button
               onClick={handleGenerate}
               disabled={!prompt.trim() || isGenerating}
-              className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+              className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 shadow-md hover:shadow-lg"
             >
               {isGenerating ? (
                 <>

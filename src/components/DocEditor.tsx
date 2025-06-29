@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Download, Wand2, FileText, ExternalLink } from 'lucide-react';
+import { Save, Download, Wand2, FileText, ExternalLink, Sparkles, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { summarizeDocument } from '../lib/gemini';
 import AIModal from './AIModal';
+import Toast from './Toast';
+import { useToast } from '../hooks/useToast';
 
 interface DocEditorProps {
   documentId: string;
@@ -17,12 +20,17 @@ const DocEditor: React.FC<DocEditorProps> = ({
   onSave,
 }) => {
   const { user } = useAuth();
+  const { toast, showToast, hideToast } = useToast();
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showSummaryMenu, setShowSummaryMenu] = useState(false);
+  const [summary, setSummary] = useState<string>('');
+  const [showSummary, setShowSummary] = useState(false);
 
   useEffect(() => {
     setTitle(initialTitle);
@@ -35,6 +43,9 @@ const DocEditor: React.FC<DocEditorProps> = ({
     setIsSaving(true);
     try {
       await onSave(title, content);
+      showToast('success', 'Document saved successfully!');
+    } catch (error) {
+      showToast('error', 'Failed to save document. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -42,17 +53,46 @@ const DocEditor: React.FC<DocEditorProps> = ({
 
   const handleAIGenerate = (generatedContent: string) => {
     setContent(generatedContent);
+    showToast('success', 'AI content generated successfully!');
+  };
+
+  const handleSummarize = async (summaryType: 'brief' | 'detailed' | 'key_points') => {
+    if (!content.trim()) {
+      showToast('warning', 'Please add some content to summarize.');
+      return;
+    }
+
+    setIsSummarizing(true);
+    setShowSummaryMenu(false);
+
+    try {
+      const result = await summarizeDocument(documentId, content, summaryType);
+      
+      if (result.success && result.summary) {
+        setSummary(result.summary);
+        setShowSummary(true);
+        showToast('success', 'Document summarized successfully!');
+      } else if (result.limit_reached) {
+        showToast('warning', result.error || 'AI generation limit reached. Please upgrade your plan.');
+      } else {
+        showToast('error', result.error || 'Failed to summarize document.');
+      }
+    } catch (error) {
+      showToast('error', 'Failed to summarize document. Please try again.');
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const handleExportToPDF = () => {
     // TODO: Implement PDF export functionality
-    alert('PDF export coming soon!');
+    showToast('warning', 'PDF export coming soon!');
     setShowExportMenu(false);
   };
 
   const handleExportToGoogle = async (exportType: 'docs' | 'sheets') => {
     if (!isGoogleConnected) {
-      alert('Please sign in with Google to export to Google Workspace. You can do this from the Account Settings page.');
+      showToast('warning', 'Please sign in with Google to export to Google Workspace. You can do this from the Account Settings page.');
       return;
     }
 
@@ -62,10 +102,10 @@ const DocEditor: React.FC<DocEditorProps> = ({
     try {
       // TODO: Implement actual Google Docs/Sheets export using the user's OAuth tokens
       // For now, show a placeholder message
-      alert(`Google ${exportType === 'docs' ? 'Docs' : 'Sheets'} export will be available soon! Your Google account is connected and ready.`);
+      showToast('success', `Google ${exportType === 'docs' ? 'Docs' : 'Sheets'} export will be available soon! Your Google account is connected and ready.`);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Export failed. Please try again.');
+      showToast('error', 'Export failed. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -87,7 +127,7 @@ const DocEditor: React.FC<DocEditorProps> = ({
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setIsAIModalOpen(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg"
               >
                 <Wand2 className="h-4 w-4" />
                 <span>Generate with AI</span>
@@ -95,7 +135,7 @@ const DocEditor: React.FC<DocEditorProps> = ({
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors shadow-md hover:shadow-lg"
               >
                 <Save className="h-4 w-4" />
                 <span>{isSaving ? 'Saving...' : 'Save'}</span>
@@ -104,6 +144,46 @@ const DocEditor: React.FC<DocEditorProps> = ({
           </div>
 
           <div className="flex items-center space-x-4">
+            {/* Summarize Menu */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowSummaryMenu(!showSummaryMenu)}
+                disabled={isSummarizing || !content.trim()}
+                className="flex items-center space-x-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-xl hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSummarizing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                <span>{isSummarizing ? 'Summarizing...' : 'Summarize'}</span>
+              </button>
+              
+              {showSummaryMenu && (
+                <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-10">
+                  <button
+                    onClick={() => handleSummarize('brief')}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Brief Summary
+                  </button>
+                  <button
+                    onClick={() => handleSummarize('detailed')}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Detailed Summary
+                  </button>
+                  <button
+                    onClick={() => handleSummarize('key_points')}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Key Points
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Export Menu */}
             <div className="relative">
               <button 
                 onClick={() => setShowExportMenu(!showExportMenu)}
@@ -151,6 +231,27 @@ const DocEditor: React.FC<DocEditorProps> = ({
           </div>
         </div>
 
+        {/* Summary Display */}
+        {showSummary && summary && (
+          <div className="border-b border-gray-200 p-6 bg-purple-50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-purple-900 flex items-center space-x-2">
+                <Sparkles className="h-5 w-5" />
+                <span>AI Summary</span>
+              </h3>
+              <button
+                onClick={() => setShowSummary(false)}
+                className="text-purple-600 hover:text-purple-800 text-sm font-medium"
+              >
+                Hide
+              </button>
+            </div>
+            <div className="bg-white rounded-xl p-4 border border-purple-200">
+              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
+            </div>
+          </div>
+        )}
+
         {/* Editor */}
         <div className="p-6">
           <textarea
@@ -166,6 +267,24 @@ const DocEditor: React.FC<DocEditorProps> = ({
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
         onGenerate={handleAIGenerate}
+      />
+
+      {/* Click outside to close menus */}
+      {(showExportMenu || showSummaryMenu) && (
+        <div
+          className="fixed inset-0 z-5"
+          onClick={() => {
+            setShowExportMenu(false);
+            setShowSummaryMenu(false);
+          }}
+        />
+      )}
+
+      <Toast
+        type={toast.type}
+        message={toast.message}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
       />
     </div>
   );
