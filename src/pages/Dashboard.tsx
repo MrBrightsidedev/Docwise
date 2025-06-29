@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, FileText, TrendingUp, Crown, Upload, RefreshCw, Sparkles } from 'lucide-react';
+import { Plus, FileText, TrendingUp, Crown, Upload, RefreshCw, Sparkles, Search, Filter } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useSubscription } from '../hooks/useSubscription';
 import DocCard from '../components/DocCard';
 import LoadingSkeleton from '../components/LoadingSkeleton';
+import UsageProgressBar from '../components/UsageProgressBar';
+import BulkActions from '../components/BulkActions';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 
@@ -23,9 +25,13 @@ const Dashboard: React.FC = () => {
   const { toast, showToast, hideToast } = useToast();
   const { subscription, usage, limits, usageCheck, loading: subscriptionLoading, refresh: refreshSubscription } = useSubscription();
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [highlightedDocId, setHighlightedDocId] = useState<string | null>(null);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
     if (user) {
@@ -34,18 +40,20 @@ const Dashboard: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    // Check for highlight parameter from AI chat redirect
     const highlightId = searchParams.get('highlight');
     if (highlightId) {
       setHighlightedDocId(highlightId);
       showToast('success', '🎉 Your AI-generated document has been created and is ready for review!');
       
-      // Clear highlight after 5 seconds
       setTimeout(() => {
         setHighlightedDocId(null);
       }, 5000);
     }
   }, [searchParams, showToast]);
+
+  useEffect(() => {
+    filterDocuments();
+  }, [documents, searchQuery, filterType]);
 
   const fetchDocuments = async () => {
     try {
@@ -65,8 +73,38 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const filterDocuments = () => {
+    let filtered = documents;
+
+    if (searchQuery) {
+      filtered = filtered.filter(doc => 
+        doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        doc.content.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    if (filterType !== 'all') {
+      filtered = filtered.filter(doc => {
+        const title = doc.title.toLowerCase();
+        switch (filterType) {
+          case 'nda':
+            return title.includes('nda') || title.includes('non-disclosure');
+          case 'privacy':
+            return title.includes('privacy');
+          case 'terms':
+            return title.includes('terms');
+          case 'partnership':
+            return title.includes('partnership');
+          default:
+            return true;
+        }
+      });
+    }
+
+    setFilteredDocuments(filtered);
+  };
+
   const createNewDocument = async () => {
-    // Check if user can create more documents
     if (!usageCheck.canCreateDocument) {
       showToast('warning', `Document limit reached (${usageCheck.documentUsage.used}/${usageCheck.documentUsage.limit}). Please upgrade your plan.`);
       return;
@@ -96,8 +134,8 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteDocument = async (documentId: string) => {
     try {
-      // Optimistic update - remove from UI immediately
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      setSelectedDocuments(prev => prev.filter(id => id !== documentId));
       
       const { error } = await supabase
         .from('documents')
@@ -106,7 +144,6 @@ const Dashboard: React.FC = () => {
         .eq('user_id', user?.id);
 
       if (error) {
-        // Revert optimistic update on error
         await fetchDocuments();
         throw error;
       }
@@ -115,6 +152,48 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error deleting document:', error);
       showToast('error', 'Failed to delete document. Please try again.');
+    }
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .in('id', ids)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      setDocuments(prev => prev.filter(doc => !ids.includes(doc.id)));
+      setSelectedDocuments([]);
+      showToast('success', `${ids.length} document(s) deleted successfully!`);
+    } catch (error) {
+      console.error('Error deleting documents:', error);
+      showToast('error', 'Failed to delete documents. Please try again.');
+    }
+  };
+
+  const handleBulkDownload = async (ids: string[]) => {
+    try {
+      const docsToDownload = documents.filter(doc => ids.includes(doc.id));
+      
+      for (const doc of docsToDownload) {
+        const blob = new Blob([doc.content], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${doc.title}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      showToast('success', `${ids.length} document(s) downloaded successfully!`);
+    } catch (error) {
+      console.error('Error downloading documents:', error);
+      showToast('error', 'Failed to download documents. Please try again.');
     }
   };
 
@@ -187,7 +266,7 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center space-x-3">
               <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center space-x-2 shadow-md">
                 <Sparkles className="h-4 w-4" />
-                <span>AI Assistant Available</span>
+                <span>Enhanced AI v2.0</span>
               </div>
               <button
                 onClick={handleRefreshSubscription}
@@ -202,19 +281,24 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* AI Chat Promotion Banner */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
+        {/* Enhanced AI Promotion Banner */}
+        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="bg-white bg-opacity-20 p-3 rounded-xl">
                 <Sparkles className="h-8 w-8" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold mb-2">🤖 Universal Legal AI v1.0 is Active!</h3>
-                <p className="opacity-90">
-                  Click the chat button in the bottom-right corner to generate any legal document instantly. 
-                  I'll create it and add it to your dashboard automatically!
+                <h3 className="text-xl font-semibold mb-2">🚀 Enhanced Legal AI v2.0 is Live!</h3>
+                <p className="opacity-90 mb-2">
+                  New features: Voice input, file upload, document actions, and advanced workflow management.
                 </p>
+                <div className="flex items-center space-x-4 text-sm opacity-80">
+                  <span>• Voice-to-text input</span>
+                  <span>• Document upload & review</span>
+                  <span>• Advanced chat actions</span>
+                  <span>• Multi-format export</span>
+                </div>
               </div>
             </div>
             <div className="hidden md:block">
@@ -223,6 +307,30 @@ const Dashboard: React.FC = () => {
                 <div className="text-sm opacity-90">Try it now!</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Usage Progress Bars */}
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <UsageProgressBar
+              used={usageCheck.aiUsage.used}
+              limit={usageCheck.aiUsage.limit}
+              label="AI Generations"
+              type={usageCheck.aiUsage.used / usageCheck.aiUsage.limit >= 0.9 ? 'warning' : 'default'}
+              showUpgrade={true}
+              onUpgrade={() => navigate('/pricing')}
+            />
+          </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <UsageProgressBar
+              used={usageCheck.documentUsage.used}
+              limit={usageCheck.documentUsage.limit}
+              label="Documents Created"
+              type={usageCheck.documentUsage.used / usageCheck.documentUsage.limit >= 0.9 ? 'warning' : 'default'}
+              showUpgrade={true}
+              onUpgrade={() => navigate('/pricing')}
+            />
           </div>
         </div>
 
@@ -241,18 +349,6 @@ const Dashboard: React.FC = () => {
               </div>
               <FileText className="h-8 w-8 text-primary-600" />
             </div>
-            {usageCheck.documentUsage.limit > 0 && (
-              <div className="mt-3">
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${Math.min((usageCheck.documentUsage.used / usageCheck.documentUsage.limit) * 100, 100)}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
@@ -268,18 +364,6 @@ const Dashboard: React.FC = () => {
               </div>
               <TrendingUp className="h-8 w-8 text-green-600" />
             </div>
-            {usageCheck.aiUsage.limit > 0 && (
-              <div className="mt-3">
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${Math.min((usageCheck.aiUsage.used / usageCheck.aiUsage.limit) * 100, 100)}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
@@ -306,68 +390,55 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Subscription Status Banner */}
-        {subscription?.subscription_status === 'active' && usage?.plan !== 'free' && (
-          <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">🎉 Premium Active!</h3>
-                <p className="opacity-90">
-                  You're on the {usage.plan.charAt(0).toUpperCase() + usage.plan.slice(1)} plan with full access to all features.
-                </p>
-              </div>
-              <Link
-                to="/account"
-                className="bg-white text-green-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-100 transition-colors shadow-md"
-              >
-                Manage Subscription
-              </Link>
-            </div>
+        {/* Search and Filter */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search documents..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
           </div>
-        )}
-
-        {/* Upgrade Banner for Free Users */}
-        {usage?.plan === 'free' && (
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Unlock More Features</h3>
-                <p className="opacity-90">
-                  Upgrade to Pro for unlimited AI generations and advanced features.
-                </p>
-              </div>
-              <Link
-                to="/pricing"
-                className="bg-white text-primary-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-100 transition-colors shadow-md"
-              >
-                Upgrade Now
-              </Link>
-            </div>
+          <div className="flex items-center space-x-2">
+            <Filter className="h-4 w-4 text-gray-400" />
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="all">All Documents</option>
+              <option value="nda">NDAs</option>
+              <option value="privacy">Privacy Policies</option>
+              <option value="terms">Terms of Service</option>
+              <option value="partnership">Partnerships</option>
+            </select>
           </div>
-        )}
+        </div>
 
-        {/* Usage Limit Warnings */}
-        {!usageCheck.canUseAI && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6">
-            <p className="text-yellow-800">
-              ⚠️ You've reached your AI generation limit ({usageCheck.aiUsage.used}/{usageCheck.aiUsage.limit}). 
-              <Link to="/pricing" className="font-medium underline ml-1">Upgrade your plan</Link> to continue generating documents.
-            </p>
-          </div>
-        )}
-
-        {!usageCheck.canCreateDocument && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6">
-            <p className="text-yellow-800">
-              ⚠️ You've reached your document limit ({usageCheck.documentUsage.used}/{usageCheck.documentUsage.limit}). 
-              <Link to="/pricing" className="font-medium underline ml-1">Upgrade your plan</Link> to create more documents.
-            </p>
+        {/* Bulk Actions */}
+        {documents.length > 0 && (
+          <div className="mb-6">
+            <BulkActions
+              selectedItems={selectedDocuments}
+              totalItems={filteredDocuments.length}
+              onSelectAll={() => setSelectedDocuments(filteredDocuments.map(doc => doc.id))}
+              onDeselectAll={() => setSelectedDocuments([])}
+              onDelete={handleBulkDelete}
+              onDownload={handleBulkDownload}
+            />
           </div>
         )}
 
         {/* Documents Section */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Your Documents</h2>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Your Documents {filteredDocuments.length !== documents.length && (
+              <span className="text-lg text-gray-500">({filteredDocuments.length} of {documents.length})</span>
+            )}
+          </h2>
           <button
             onClick={createNewDocument}
             disabled={!usageCheck.canCreateDocument}
@@ -379,13 +450,18 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
 
-        {documents.length === 0 ? (
+        {filteredDocuments.length === 0 ? (
           <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center">
             <div className="max-w-md mx-auto">
               <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No documents yet</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                {documents.length === 0 ? 'No documents yet' : 'No documents match your search'}
+              </h3>
               <p className="text-gray-600 mb-6">
-                Use the AI chat assistant to generate your first legal document, or create one manually.
+                {documents.length === 0 
+                  ? 'Use the Enhanced AI chat assistant to generate your first legal document, or create one manually.'
+                  : 'Try adjusting your search terms or filters to find what you\'re looking for.'
+                }
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
@@ -401,16 +477,18 @@ const Dashboard: React.FC = () => {
                   <span>Upload File</span>
                 </button>
               </div>
-              <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Tip:</strong> Click the chat button (💬) in the bottom-right corner to generate documents with AI!
-                </p>
-              </div>
+              {documents.length === 0 && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+                  <p className="text-sm text-blue-800">
+                    💡 <strong>Tip:</strong> Click the chat button (💬) in the bottom-right corner to generate documents with Enhanced AI v2.0!
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {documents.map((doc) => (
+            {filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
                 className={`transition-all duration-300 ${
@@ -419,13 +497,27 @@ const Dashboard: React.FC = () => {
                     : ''
                 }`}
               >
-                <DocCard
-                  id={doc.id}
-                  title={doc.title}
-                  createdAt={doc.created_at}
-                  content={doc.content}
-                  onDelete={handleDeleteDocument}
-                />
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={selectedDocuments.includes(doc.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedDocuments(prev => [...prev, doc.id]);
+                      } else {
+                        setSelectedDocuments(prev => prev.filter(id => id !== doc.id));
+                      }
+                    }}
+                    className="absolute top-4 left-4 z-10 rounded"
+                  />
+                  <DocCard
+                    id={doc.id}
+                    title={doc.title}
+                    createdAt={doc.created_at}
+                    content={doc.content}
+                    onDelete={handleDeleteDocument}
+                  />
+                </div>
               </div>
             ))}
           </div>

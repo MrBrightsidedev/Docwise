@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import DocEditor from '../components/DocEditor';
+import BackButton from '../components/BackButton';
+import Breadcrumbs from '../components/Breadcrumbs';
+import ProgressIndicator from '../components/ProgressIndicator';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const Editor: React.FC = () => {
   const { docId } = useParams<{ docId: string }>();
@@ -10,6 +14,17 @@ const Editor: React.FC = () => {
   const navigate = useNavigate();
   const [document, setDocument] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const steps = [
+    { id: 'create', name: 'Create Document', status: 'complete' as const },
+    { id: 'edit', name: 'Edit & Review', status: 'current' as const },
+    { id: 'finalize', name: 'Finalize & Export', status: 'upcoming' as const },
+  ];
+
+  const breadcrumbItems = [
+    { label: 'Documents', href: '/dashboard' },
+    { label: document?.title || 'Loading...', current: true },
+  ];
 
   useEffect(() => {
     if (docId && user) {
@@ -28,7 +43,6 @@ const Editor: React.FC = () => {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // Document not found
           navigate('/dashboard');
           return;
         }
@@ -61,16 +75,14 @@ const Editor: React.FC = () => {
       setDocument((prev: any) => ({ ...prev, title, content }));
     } catch (error) {
       console.error('Error saving document:', error);
+      throw error;
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading document...</p>
-        </div>
+        <LoadingSpinner size="lg" message="Loading document..." />
       </div>
     );
   }
@@ -79,20 +91,40 @@ const Editor: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">Document not found</p>
+          <p className="text-gray-600 mb-4">Document not found</p>
+          <BackButton to="/dashboard" label="Back to Dashboard" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <DocEditor
-        documentId={document.id}
-        initialTitle={document.title}
-        initialContent={document.content}
-        onSave={handleSave}
-      />
+    <div className="min-h-screen bg-gray-50">
+      {/* Header with Navigation */}
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <BackButton to="/dashboard" label="Back to Dashboard" />
+            <div className="text-sm text-gray-500">
+              Last saved: {new Date(document.updated_at).toLocaleString()}
+            </div>
+          </div>
+          
+          <Breadcrumbs items={breadcrumbItems} className="mb-4" />
+          
+          <ProgressIndicator steps={steps} />
+        </div>
+      </div>
+
+      {/* Editor Content */}
+      <div className="py-8">
+        <DocEditor
+          documentId={document.id}
+          initialTitle={document.title}
+          initialContent={document.content}
+          onSave={handleSave}
+        />
+      </div>
     </div>
   );
 };
