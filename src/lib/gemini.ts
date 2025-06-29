@@ -95,11 +95,48 @@ export async function generateDocument(
   businessType: string = 'startup'
 ): Promise<GenerateResponse> {
   try {
+    // Input validation with detailed logging
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      console.error('Invalid prompt provided:', { prompt, type: typeof prompt, length: prompt?.length });
+      return {
+        success: false,
+        error: 'Prompt is missing, empty, or invalid'
+      };
+    }
+
+    if (!documentType || typeof documentType !== 'string' || documentType.trim().length === 0) {
+      console.error('Invalid document type provided:', { documentType, type: typeof documentType });
+      return {
+        success: false,
+        error: 'Document type is missing or invalid'
+      };
+    }
+
+    console.log('Generating document with params:', {
+      prompt: prompt.substring(0, 100) + '...',
+      documentType,
+      country,
+      businessType
+    });
+
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
-      throw new Error('User not authenticated');
+      console.error('No authentication session found');
+      return {
+        success: false,
+        error: 'User not authenticated'
+      };
     }
+
+    const requestBody = {
+      prompt: prompt.trim(),
+      document_type: documentType.trim(),
+      country,
+      business_type: businessType,
+    };
+
+    console.log('Sending request to Supabase Edge Function:', requestBody);
 
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-generate`,
@@ -109,23 +146,28 @@ export async function generateDocument(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          prompt,
-          document_type: documentType,
-          country,
-          business_type: businessType,
-        }),
+        body: JSON.stringify(requestBody),
       }
     );
 
+    console.log('Edge function response status:', response.status);
+
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to generate document');
+      const errorData = await response.json();
+      console.error('Edge function error response:', errorData);
+      return {
+        success: false,
+        error: errorData.error || `Request failed with status ${response.status}`,
+        limit_reached: errorData.limit_reached
+      };
     }
 
-    return response.json();
+    const result = await response.json();
+    console.log('Edge function success response:', result);
+
+    return result;
   } catch (error) {
-    console.error('Error generating document:', error);
+    console.error('Error in generateDocument:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate document'
