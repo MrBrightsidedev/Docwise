@@ -19,7 +19,7 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
     {
       id: '1',
       type: 'assistant',
-      content: 'Hello! I\'m your Legal Assistant AI 🤖. I can help you generate professional legal documents like NDAs, contracts, and agreements. What would you like to create today?',
+      content: 'Hello! I\'m your Legal Assistant AI v2.0 🤖. I can help you generate professional legal documents including GDPR-compliant privacy policies, NDAs, contracts, and agreements. What would you like to create today?',
       timestamp: new Date(),
     }
   ]);
@@ -58,16 +58,20 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
       // Determine document type from user message
       const documentType = detectDocumentType(userMessage);
       
+      // Determine country/jurisdiction from message
+      const country = detectCountry(userMessage);
+      
       const result = await generateDocument(
         userMessage,
         documentType,
-        'US', // Default to US, could be made configurable
+        country,
         'startup' // Default to startup, could be made configurable
       );
 
       if (result.success && result.content) {
         setLastGeneratedContent(result.content);
-        addMessage('assistant', `I've generated a ${documentType.toUpperCase()} document based on your requirements. Here's what I created:\n\n${result.content}`);
+        const documentTypeLabel = getDocumentTypeLabel(documentType);
+        addMessage('assistant', `I've generated a ${documentTypeLabel} document based on your requirements. Here's what I created:\n\n${result.content}`);
       } else if (result.limit_reached) {
         addMessage('assistant', result.error || 'AI generation limit reached. Please upgrade your plan to continue generating documents.');
       } else {
@@ -83,7 +87,9 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
   const detectDocumentType = (message: string): string => {
     const lowerMessage = message.toLowerCase();
     
-    if (lowerMessage.includes('nda') || lowerMessage.includes('non-disclosure') || lowerMessage.includes('confidentiality')) {
+    if (lowerMessage.includes('privacy policy') || lowerMessage.includes('privacy') || lowerMessage.includes('gdpr') || lowerMessage.includes('data protection')) {
+      return 'privacy';
+    } else if (lowerMessage.includes('nda') || lowerMessage.includes('non-disclosure') || lowerMessage.includes('confidentiality')) {
       return 'nda';
     } else if (lowerMessage.includes('partnership') || lowerMessage.includes('partner')) {
       return 'partnership';
@@ -97,8 +103,6 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
       return 'consulting';
     } else if (lowerMessage.includes('terms of service') || lowerMessage.includes('tos')) {
       return 'terms';
-    } else if (lowerMessage.includes('privacy policy') || lowerMessage.includes('privacy')) {
-      return 'privacy';
     } else if (lowerMessage.includes('license') || lowerMessage.includes('licensing')) {
       return 'licensing';
     } else if (lowerMessage.includes('vendor') || lowerMessage.includes('supplier')) {
@@ -106,6 +110,48 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
     }
     
     return 'nda'; // Default fallback
+  };
+
+  const detectCountry = (message: string): string => {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('netherlands') || lowerMessage.includes('dutch') || lowerMessage.includes('nl')) {
+      return 'Netherlands';
+    } else if (lowerMessage.includes('united states') || lowerMessage.includes('usa') || lowerMessage.includes('us')) {
+      return 'US';
+    } else if (lowerMessage.includes('united kingdom') || lowerMessage.includes('uk') || lowerMessage.includes('britain')) {
+      return 'UK';
+    } else if (lowerMessage.includes('germany') || lowerMessage.includes('german') || lowerMessage.includes('de')) {
+      return 'DE';
+    } else if (lowerMessage.includes('france') || lowerMessage.includes('french') || lowerMessage.includes('fr')) {
+      return 'FR';
+    } else if (lowerMessage.includes('canada') || lowerMessage.includes('canadian') || lowerMessage.includes('ca')) {
+      return 'CA';
+    } else if (lowerMessage.includes('australia') || lowerMessage.includes('australian') || lowerMessage.includes('au')) {
+      return 'AU';
+    } else if (lowerMessage.includes('singapore') || lowerMessage.includes('sg')) {
+      return 'SG';
+    } else if (lowerMessage.includes('gdpr') || lowerMessage.includes('european') || lowerMessage.includes('eu')) {
+      return 'Netherlands'; // Default to Netherlands for GDPR requests
+    }
+    
+    return 'Netherlands'; // Default to Netherlands (GDPR compliant)
+  };
+
+  const getDocumentTypeLabel = (type: string): string => {
+    const labels: Record<string, string> = {
+      'privacy': 'GDPR-Compliant Privacy Policy',
+      'nda': 'Non-Disclosure Agreement (NDA)',
+      'partnership': 'Partnership Agreement',
+      'employment': 'Employment Agreement',
+      'service': 'Service Contract',
+      'freelance': 'Freelance Contract',
+      'consulting': 'Consulting Agreement',
+      'terms': 'Terms of Service',
+      'licensing': 'Licensing Agreement',
+      'vendor': 'Vendor Agreement'
+    };
+    return labels[type] || type.toUpperCase();
   };
 
   const handleDownloadPDF = () => {
@@ -156,8 +202,8 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
                   <Bot className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Legal Assistant AI</h3>
-                  <p className="text-xs opacity-90">Online • Ready to help</p>
+                  <h3 className="font-semibold">Legal Assistant AI v2.0</h3>
+                  <p className="text-xs opacity-90">Enhanced GDPR Compliance • Ready to help</p>
                 </div>
               </div>
               <button
@@ -252,7 +298,7 @@ const AIChat: React.FC<AIChatProps> = ({ onDocumentGenerated }) => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ask me to generate any legal document..."
+                placeholder="Ask me to generate any legal document or privacy policy..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
                 disabled={isLoading}
               />

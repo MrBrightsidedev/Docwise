@@ -11,7 +11,7 @@ interface AIModalProps {
 const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
   const [prompt, setPrompt] = useState('');
   const [templateType, setTemplateType] = useState('nda');
-  const [country, setCountry] = useState('US');
+  const [country, setCountry] = useState('Netherlands');
   const [businessType, setBusinessType] = useState('startup');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +47,8 @@ const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
     { value: 'partnership', label: 'Partnership Agreement' },
     { value: 'employment', label: 'Employment Agreement' },
     { value: 'service', label: 'Service Contract' },
+    { value: 'privacy', label: 'Privacy Policy (GDPR Compliant)' },
     { value: 'terms', label: 'Terms of Service' },
-    { value: 'privacy', label: 'Privacy Policy' },
     { value: 'freelance', label: 'Freelance Contract' },
     { value: 'consulting', label: 'Consulting Agreement' },
     { value: 'licensing', label: 'Licensing Agreement' },
@@ -56,13 +56,13 @@ const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
   ];
 
   const countries = [
+    { value: 'Netherlands', label: 'Netherlands (GDPR)' },
     { value: 'US', label: 'United States' },
     { value: 'UK', label: 'United Kingdom' },
     { value: 'CA', label: 'Canada' },
     { value: 'AU', label: 'Australia' },
-    { value: 'DE', label: 'Germany' },
-    { value: 'FR', label: 'France' },
-    { value: 'NL', label: 'Netherlands' },
+    { value: 'DE', label: 'Germany (GDPR)' },
+    { value: 'FR', label: 'France (GDPR)' },
     { value: 'SG', label: 'Singapore' },
     { value: 'International', label: 'International/Generic' },
   ];
@@ -74,13 +74,22 @@ const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
     { value: 'freelancer', label: 'Freelancer/Individual' },
     { value: 'nonprofit', label: 'Non-Profit' },
     { value: 'partnership', label: 'Partnership' },
+    { value: 'saas', label: 'SaaS Company' },
+    { value: 'ecommerce', label: 'E-commerce Business' },
   ];
+
+  const getPromptPlaceholder = () => {
+    if (templateType === 'privacy') {
+      return 'E.g., Create a GDPR-compliant privacy policy for an AI-powered document generation SaaS platform that collects user emails, subscription data, and analytics. The service uses Supabase for data storage, Stripe for payments, and is hosted on Vercel...';
+    }
+    return 'E.g., Create an NDA for a software development project between two companies, with a 2-year confidentiality period, covering proprietary algorithms and customer data...';
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -88,8 +97,8 @@ const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
                 <Wand2 className="h-6 w-6 text-primary-600" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">AI Legal Assistant</h2>
-                <p className="text-sm text-gray-600">Generate professional legal documents with AI</p>
+                <h2 className="text-xl font-semibold text-gray-900">AI Legal Assistant v2.0</h2>
+                <p className="text-sm text-gray-600">Generate professional legal documents with enhanced GDPR compliance</p>
               </div>
             </div>
             <button
@@ -170,22 +179,39 @@ const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onGenerate }) => {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="E.g., Create an NDA for a software development project between two companies, with a 2-year confidentiality period, covering proprietary algorithms and customer data..."
+              placeholder={getPromptPlaceholder()}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
               rows={6}
             />
             <p className="text-xs text-gray-500 mt-2">
-              Be specific about parties involved, duration, key terms, and any special requirements.
+              Be specific about parties involved, data types (for privacy policies), duration, key terms, and any special requirements.
             </p>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <h4 className="font-medium text-blue-900 mb-2">🤖 AI Legal Assistant Features:</h4>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Context-aware legal document generation</li>
+          {templateType === 'privacy' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <h4 className="font-medium text-blue-900 mb-2">🔒 Enhanced Privacy Policy Features:</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Full GDPR compliance with all 15 required sections</li>
+                <li>• Legal basis for processing under Article 6</li>
+                <li>• Specific data examples and retention periods</li>
+                <li>• Cookie policy integration</li>
+                <li>• International data transfer clauses</li>
+                <li>• DPO requirements assessment</li>
+                <li>• Netherlands/EU jurisdiction by default</li>
+              </ul>
+            </div>
+          )}
+
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <h4 className="font-medium text-green-900 mb-2">🤖 AI Legal Assistant v2.0 Features:</h4>
+            <ul className="text-sm text-green-800 space-y-1">
+              <li>• Enhanced GDPR-compliant privacy policy generation</li>
+              <li>• Context-aware legal document creation</li>
               <li>• Jurisdiction-specific legal language</li>
               <li>• Professional formatting and structure</li>
-              <li>• Complete clauses and signature blocks</li>
+              <li>• Complete clauses and legal requirements</li>
+              <li>• International law compliance</li>
             </ul>
           </div>
 

@@ -23,20 +23,63 @@ interface GenerateRequest {
   business_type?: string;
 }
 
-// Legal AI instruction prompt
-const LEGAL_AI_INSTRUCTION = `You are a professional legal AI assistant specialized in drafting and reviewing business contracts. Your goal is to generate complete, legally sound documents based on the user's input.
+// Enhanced Legal AI instruction prompt - Version 2.0
+const LEGAL_AI_INSTRUCTION = `You are a senior legal advisor AI specialized in privacy, data protection, and international digital law. Your goal is to generate robust, real-world legal documents such as privacy policies, NDAs, and partnership agreements tailored to jurisdictional requirements.
 
-GUIDELINES:
+## 📌 PRIVACY POLICY GENERATION (Primary Focus)
+
+When generating a Privacy Policy, follow these strict instructions:
+
+### Structure Requirements:
+Always include the following clearly titled sections:
+1. **Introduction** (include effective date and version)
+2. **Who We Are** (auto-fill company description or ask for it)
+3. **What Data We Collect** (list categories AND give specific examples)
+4. **Legal Basis for Processing** (list per purpose: consent, contract, legal obligation, legitimate interest)
+5. **Why We Collect Data** (purposes)
+6. **How We Store and Protect Data** (mention encryption, MFA, access controls)
+7. **Cookies and Tracking** (include functional vs analytics + cookie link or summary)
+8. **Data Sharing and Processors** (include third parties or examples like Stripe, Supabase)
+9. **User Rights under GDPR**
+10. **International Data Transfers** (name typical countries and clauses used, e.g., SCCs)
+11. **Data Retention** (table format, if possible)
+12. **Data Protection Officer** (optional — state whether applicable under GDPR)
+13. **Changes to This Policy**
+14. **Contact Information**
+15. **Legal Disclaimer** (include this in the introduction or final note)
+
+### Quality Rules:
+- Replace all placeholders (e.g., [insert company name]) or warn the user to fill them in
+- Remove signature sections unless the output is intended as a signed PDF document
+- Do not insert [link to cookie policy] unless an actual link is provided — otherwise summarize a default GDPR-compliant cookie use
+- Add a header like: **Effective Date:** [Current Date] — Version 1.0
+- Write in professional yet human-readable language
+- Default jurisdiction is the **Netherlands (under GDPR)** unless specified otherwise
+- Include specific data examples in all data categories (e.g., "email addresses such as user@example.com")
+- Provide clear legal basis for each processing purpose under GDPR Article 6
+- Include retention periods in table format when possible
+
+### Optional Enhancements (if user inputs are available):
+- Include cloud host (e.g., "hosted on EU-based servers via Vercel/AWS")
+- Mention BCRs or specific SCC clauses for international data transfers
+- If cookie scanner tool like Cookiebot is used, reference it
+- Auto-fill company information from user context
+
+## 📋 OTHER LEGAL DOCUMENTS
+
+For NDAs, Partnership Agreements, Employment Contracts, and other legal documents:
+
+### Guidelines:
 - Always include clear clauses for parties, terms, confidentiality, responsibilities, and signatures
 - Use simple, human-readable legal language while maintaining legal precision
-- Adjust templates based on country-specific laws when applicable (default to US/International standards)
+- Adjust templates based on country-specific laws when applicable (default to Netherlands/EU standards)
 - Keep formatting clean and professional with proper sections and numbering
 - Assume documents are for small startups or freelancers unless otherwise specified
 - Include standard legal disclaimers and review recommendations
 - Provide complete documents, not just outlines or summaries
 - Use markdown formatting for better readability
 
-DOCUMENT STRUCTURE:
+### Document Structure:
 1. Title and parties identification
 2. Purpose and scope
 3. Terms and conditions
@@ -46,7 +89,18 @@ DOCUMENT STRUCTURE:
 7. Signature blocks
 8. Legal disclaimer
 
-Remember: Always recommend legal review before use.`;
+## 🔄 FINAL REQUIREMENTS
+
+Always conclude with:
+"This [document type] is for informational purposes only and does not constitute legal advice. You are advised to consult a qualified legal professional for matters specific to your jurisdiction or company."
+
+Remember: 
+- Generate complete, legally sound documents
+- Maintain professional formatting
+- Include all necessary legal elements
+- Provide jurisdiction-specific guidance
+- Ensure GDPR compliance for privacy documents
+- Replace placeholders with realistic examples or clear instructions`;
 
 Deno.serve(async (req) => {
   try {
@@ -93,7 +147,7 @@ Deno.serve(async (req) => {
     const requestBody = await req.json();
     console.log('Request body received:', requestBody);
 
-    const { prompt, document_type, country = 'US', business_type = 'startup' }: GenerateRequest = requestBody;
+    const { prompt, document_type, country = 'Netherlands', business_type = 'startup' }: GenerateRequest = requestBody;
 
     // Validate request with detailed logging
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -159,18 +213,40 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Enhanced prompt creation with document-specific instructions
+    let documentSpecificInstructions = '';
+    
+    if (document_type.toLowerCase().includes('privacy') || document_type.toLowerCase().includes('policy')) {
+      documentSpecificInstructions = `
+SPECIAL FOCUS: This is a Privacy Policy request. Please follow the Privacy Policy generation guidelines strictly:
+- Include all 15 required sections
+- Provide specific data examples (e.g., "email addresses like user@example.com")
+- List legal basis for each processing purpose under GDPR Article 6
+- Include retention periods in table format
+- Default to Netherlands/GDPR jurisdiction
+- Add effective date header: **Effective Date:** ${new Date().toLocaleDateString()} — Version 1.0
+- Remove signature blocks (this is a policy, not a contract)
+- Include comprehensive cookie policy section or summary
+- Mention specific security measures (encryption, MFA, access controls)
+`;
+    }
+
     // Create comprehensive prompt
     const fullPrompt = `${LEGAL_AI_INSTRUCTION}
+
+${documentSpecificInstructions}
 
 CONTEXT:
 - Document Type: ${document_type}
 - Country/Jurisdiction: ${country}
 - Business Type: ${business_type}
+- User Email: ${user.email}
+- Generation Date: ${new Date().toLocaleDateString()}
 
 USER REQUEST:
 ${prompt}
 
-Please generate a complete, professional legal document that addresses all the requirements mentioned above. Include proper legal language, structure, and all necessary clauses for this type of agreement.`;
+Please generate a complete, professional legal document that addresses all the requirements mentioned above. For Privacy Policies, ensure full GDPR compliance with all 15 required sections. Include proper legal language, structure, and all necessary clauses for this type of document.`;
 
     console.log('Full prompt being sent to Gemini 1.5 Flash:', fullPrompt);
 
@@ -186,10 +262,10 @@ Please generate a complete, professional legal document that addresses all the r
         }
       ],
       generationConfig: {
-        temperature: 0.4,
+        temperature: 0.3, // Lower temperature for more consistent legal documents
         topK: 40,
         topP: 0.95,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096, // Increased for longer privacy policies
       },
       safetySettings: [
         {
