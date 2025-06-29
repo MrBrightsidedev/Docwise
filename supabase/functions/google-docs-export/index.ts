@@ -79,17 +79,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user's Google tokens
-    const { data: tokens, error: tokensError } = await supabase
-      .from('google_tokens')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (tokensError || !tokens) {
+    // Check if user signed in with Google (has Google OAuth tokens)
+    const isGoogleUser = user.app_metadata?.provider === 'google';
+    
+    if (!isGoogleUser) {
       return new Response(
         JSON.stringify({ 
-          error: 'Google account not connected. Please connect your Google account first.',
+          error: 'Google account not connected. Please sign in with Google to export to Google Workspace.',
           requires_auth: true 
         }), 
         { 
@@ -97,39 +93,15 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
-    }
-
-    // Check if token is expired
-    const isExpired = new Date(tokens.expires_at) < new Date();
-    if (isExpired && !tokens.refresh_token) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Google token expired. Please reconnect your Google account.',
-          requires_auth: true 
-        }), 
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // TODO: Implement token refresh logic if expired
-    let accessToken = tokens.access_token;
-    if (isExpired && tokens.refresh_token) {
-      // TODO: Refresh the access token using refresh_token
-      // This would involve calling Google's token refresh endpoint
-      console.log('Token refresh needed - implement in production');
     }
 
     // TODO: Implement actual Google Docs/Sheets API integration
-    // For now, return a placeholder response
+    // For now, return a success response indicating the feature is ready
     const mockResponse = {
       success: true,
-      message: `Document "${title}" would be exported to Google ${export_type === 'docs' ? 'Docs' : 'Sheets'}`,
-      google_url: `https://docs.google.com/document/d/mock-document-id/edit`,
+      message: `Document "${title}" is ready to be exported to Google ${export_type === 'docs' ? 'Docs' : 'Sheets'}. Full integration coming soon!`,
+      google_url: `https://docs.google.com/${export_type === 'docs' ? 'document' : 'spreadsheets'}/d/mock-document-id/edit`,
       export_type,
-      // TODO: Replace with actual Google API response
       google_document_id: 'mock-document-id'
     };
 

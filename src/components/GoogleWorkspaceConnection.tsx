@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const GoogleWorkspaceConnection: React.FC = () => {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -11,7 +12,7 @@ const GoogleWorkspaceConnection: React.FC = () => {
 
   useEffect(() => {
     checkConnectionStatus();
-  }, [user, session]);
+  }, [user]);
 
   const checkConnectionStatus = async () => {
     try {
