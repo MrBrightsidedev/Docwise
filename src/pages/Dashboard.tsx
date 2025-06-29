@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Plus, FileText, TrendingUp, Crown, Upload, RefreshCw } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, FileText, TrendingUp, Crown, Upload, RefreshCw, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useSubscription } from '../hooks/useSubscription';
@@ -19,17 +19,33 @@ interface Document {
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast, showToast, hideToast } = useToast();
   const { subscription, usage, limits, usageCheck, loading: subscriptionLoading, refresh: refreshSubscription } = useSubscription();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [highlightedDocId, setHighlightedDocId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
       fetchDocuments();
     }
   }, [user]);
+
+  useEffect(() => {
+    // Check for highlight parameter from AI chat redirect
+    const highlightId = searchParams.get('highlight');
+    if (highlightId) {
+      setHighlightedDocId(highlightId);
+      showToast('success', '🎉 Your AI-generated document has been created and is ready for review!');
+      
+      // Clear highlight after 5 seconds
+      setTimeout(() => {
+        setHighlightedDocId(null);
+      }, 5000);
+    }
+  }, [searchParams, showToast]);
 
   const fetchDocuments = async () => {
     try {
@@ -168,15 +184,45 @@ const Dashboard: React.FC = () => {
                 Manage your legal documents and generate new ones with AI assistance.
               </p>
             </div>
-            <button
-              onClick={handleRefreshSubscription}
-              disabled={refreshing}
-              className="flex items-center space-x-2 px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
-              title="Refresh subscription data"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center space-x-2 shadow-md">
+                <Sparkles className="h-4 w-4" />
+                <span>AI Assistant Available</span>
+              </div>
+              <button
+                onClick={handleRefreshSubscription}
+                disabled={refreshing}
+                className="flex items-center space-x-2 px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                title="Refresh subscription data"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Chat Promotion Banner */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-700 rounded-2xl p-6 mb-8 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="bg-white bg-opacity-20 p-3 rounded-xl">
+                <Sparkles className="h-8 w-8" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-2">🤖 Universal Legal AI v1.0 is Active!</h3>
+                <p className="opacity-90">
+                  Click the chat button in the bottom-right corner to generate any legal document instantly. 
+                  I'll create it and add it to your dashboard automatically!
+                </p>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <div className="bg-white bg-opacity-20 rounded-xl p-4 text-center">
+                <div className="text-2xl font-bold">💬</div>
+                <div className="text-sm opacity-90">Try it now!</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -339,7 +385,7 @@ const Dashboard: React.FC = () => {
               <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No documents yet</h3>
               <p className="text-gray-600 mb-6">
-                Upload or connect a Google Doc to get started, or create your first legal document with AI assistance.
+                Use the AI chat assistant to generate your first legal document, or create one manually.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
@@ -355,19 +401,32 @@ const Dashboard: React.FC = () => {
                   <span>Upload File</span>
                 </button>
               </div>
+              <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+                <p className="text-sm text-blue-800">
+                  💡 <strong>Tip:</strong> Click the chat button (💬) in the bottom-right corner to generate documents with AI!
+                </p>
+              </div>
             </div>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {documents.map((doc) => (
-              <DocCard
+              <div
                 key={doc.id}
-                id={doc.id}
-                title={doc.title}
-                createdAt={doc.created_at}
-                content={doc.content}
-                onDelete={handleDeleteDocument}
-              />
+                className={`transition-all duration-300 ${
+                  highlightedDocId === doc.id 
+                    ? 'ring-4 ring-green-400 ring-opacity-50 scale-105' 
+                    : ''
+                }`}
+              >
+                <DocCard
+                  id={doc.id}
+                  title={doc.title}
+                  createdAt={doc.created_at}
+                  content={doc.content}
+                  onDelete={handleDeleteDocument}
+                />
+              </div>
             ))}
           </div>
         )}

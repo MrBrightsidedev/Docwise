@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import GlobalAIChat from './components/GlobalAIChat';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -49,6 +50,9 @@ function App() {
               }
             />
           </Routes>
+          
+          {/* Global AI Chat - Available on all pages */}
+          <GlobalAIChat />
         </div>
       </Router>
     </AuthProvider>
