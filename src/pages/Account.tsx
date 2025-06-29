@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Mail, Lock, CreditCard, Settings } from 'lucide-react';
+import SubscriptionStatus from '../components/SubscriptionStatus';
 
 const Account: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -8,8 +9,8 @@ const Account: React.FC = () => {
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
+    { id: 'subscription', label: 'Subscription', icon: CreditCard },
     { id: 'security', label: 'Security', icon: Lock },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'integrations', label: 'Integrations', icon: Settings },
   ];
 
@@ -38,6 +39,13 @@ const Account: React.FC = () => {
           </div>
         );
 
+      case 'subscription':
+        return (
+          <div className="space-y-6">
+            <SubscriptionStatus />
+          </div>
+        );
+
       case 'security':
         return (
           <div className="space-y-6">
@@ -55,30 +63,6 @@ const Account: React.FC = () => {
               <button className="border border-gray-300 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
                 Enable 2FA
               </button>
-            </div>
-          </div>
-        );
-
-      case 'billing':
-        return (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Current Plan</h3>
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">Free Plan</p>
-                    <p className="text-sm text-gray-600">3 documents, 1 AI generation per month</p>
-                  </div>
-                  <button className="bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 transition-colors">
-                    Upgrade
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Billing History</h3>
-              <p className="text-gray-600">No billing history available for free plan.</p>
             </div>
           </div>
         );
