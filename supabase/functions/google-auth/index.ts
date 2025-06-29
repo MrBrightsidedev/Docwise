@@ -12,10 +12,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// TODO: Set these in your Supabase environment variables
+// Google OAuth configuration
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
-const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
+// Use the current Supabase function URL as the redirect URI
+const GOOGLE_REDIRECT_URI = `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-auth?action=callback`;
 
 Deno.serve(async (req) => {
   try {
@@ -29,9 +30,9 @@ Deno.serve(async (req) => {
 
     if (req.method === 'GET' && action === 'auth_url') {
       // Generate Google OAuth URL
-      if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
+      if (!GOOGLE_CLIENT_ID) {
         return new Response(
-          JSON.stringify({ error: 'Google OAuth not configured' }), 
+          JSON.stringify({ error: 'Google OAuth not configured. Please set GOOGLE_CLIENT_ID environment variable.' }), 
           { 
             status: 500, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -62,6 +63,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (req.method === 'GET' && action === 'callback') {
+      // Handle OAuth callback from Google
+      const code = url.searchParams.get('code');
+      const error = url.searchParams.get('error');
+
+      if (error) {
+        // Redirect to account page with error
+        return new Response(null, {
+          status: 302,
+          headers: {
+            ...corsHeaders,
+            'Location': `${Deno.env.get('SUPABASE_URL').replace('.supabase.co', '.netlify.app')}/account?google_error=${encodeURIComponent(error)}`
+          }
+        });
+      }
+
+      if (!code) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            ...corsHeaders,
+            'Location': `${Deno.env.get('SUPABASE_URL').replace('.supabase.co', '.netlify.app')}/account?google_error=no_code`
+          }
+        });
+      }
+
+      // TODO: Exchange code for tokens with Google OAuth API
+      // For now, redirect to account page with success
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          'Location': `${Deno.env.get('SUPABASE_URL').replace('.supabase.co', '.netlify.app')}/account?google_success=true`
+        }
+      });
+    }
+
     if (req.method === 'POST' && action === 'exchange_code') {
       // Exchange authorization code for tokens
       const authHeader = req.headers.get('Authorization')!;
@@ -90,14 +128,24 @@ Deno.serve(async (req) => {
         );
       }
 
-      // TODO: Exchange code for tokens with Google
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+        return new Response(
+          JSON.stringify({ error: 'Google OAuth not properly configured' }), 
+          { 
+            status: 500, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // TODO: Exchange code for tokens with Google OAuth API
       // This is a placeholder implementation
       const mockTokenResponse = {
-        access_token: 'mock_access_token',
-        refresh_token: 'mock_refresh_token',
+        access_token: 'mock_access_token_' + Date.now(),
+        refresh_token: 'mock_refresh_token_' + Date.now(),
         expires_in: 3600,
         token_type: 'Bearer',
-        scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file'
+        scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
       };
 
       // Calculate expiration time

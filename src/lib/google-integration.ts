@@ -29,12 +29,19 @@ export interface GoogleTokenStatus {
  */
 export async function getGoogleAuthUrl(): Promise<GoogleAuthResponse> {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
+    }
+
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-auth?action=auth_url`,
       {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
       }
     );
